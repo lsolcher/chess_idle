@@ -1,0 +1,112 @@
+{
+  "supporterStore": {
+    "title": "Supporter's Club",
+    "subtitle": "Optional convenience perks — thank you for supporting the game!",
+    "qolNotice": "QoL only: no combat stats, no Arena point changes. Persists across prestige.",
+    "unlock": "Unlock",
+    "alreadyOwned": "Already owned",
+    "thankYou": "Thank you for supporting the game! \"{item}\" is now active.",
+    "dismissThanks": "Dismiss",
+    "advancedLogHeading": "Advanced combat log",
+    "goldPerAction": "Gold per action",
+    "damagePerAction": "Damage per action",
+    "captureRate": "Capture rate",
+    "items": {
+      "offlineGoldMultiplier": {
+        "label": "Offline Gold Multiplier",
+        "effect": "1.5× gold while away (offline drip only)"
+      },
+      "autoShopAssistant": {
+        "label": "Auto-Shop Assistant",
+        "effect": "Automatically buys the best ROI upgrade when you enter prep"
+      },
+      "advancedCombatLog": {
+        "label": "Advanced Combat Log",
+        "effect": "Extra analytics on the wave outcome screen"
+      }
+    }
+  },
+  "arenaLoadout": {
+    "title": "Arena Tactical Loadout",
+    "subtitle": "Deploy your roster on ranks 1–2. Point costs use live upgrade levels.",
+    "pointBudget": "Point budget",
+    "pointLine": "Army Value: {total} / {cap}",
+    "kingRequired": "King required on board",
+    "overCap": "Over point cap",
+    "deployedCount": "{count} pieces deployed",
+    "rosterTitle": "Unlocked roster",
+    "rosterHint": "Deploy onto cyan squares (ranks 1–2) or use Auto-place.",
+    "onBoard": "Deployed",
+    "deploy": "Deploy",
+    "autoPlace": "Auto-place",
+    "remove": "Remove",
+    "save": "Save loadout",
+    "saveSuccess": "Ghost army saved ({id})",
+    "saveInvalid": "Cannot save — add a King and stay within the cap.",
+    "boardIdle": "Select a roster piece, then tap a highlighted square.",
+    "boardDeploy": "Tap a cyan square on ranks 1–2 to place the piece."
+  },
+  "chessDojo": {
+    "title": "Chess Dojo",
+    "subtitle": "Training room — sharpen tactics and earn Skill Points.",
+    "skillPoints": "Skill Points",
+    "elo": "Elo Shards",
+    "difficulty": "Difficulty",
+    "difficulty_easy": "Easy",
+    "difficulty_medium": "Medium",
+    "difficulty_hard": "Hard",
+    "winRewardPreview": "Win reward: +{points} SP",
+    "trainingRecord": "Training wins: {total}",
+    "shopTitle": "Meta-Upgrade Shop",
+    "shopHint": "Spend Skill Points on permanent Dojo bonuses. Affordable upgrades are highlighted.",
+    "rank": "Rank {rank}/{max}",
+    "sp": "SP",
+    "maxed": "Maxed",
+    "newMatch": "New match",
+    "yourTurn": "Your turn — tap a piece, then a highlighted square.",
+    "selectTarget": "Choose a destination (sky highlight).",
+    "aiTurn": "Sensei is thinking…",
+    "aiThinking": "Sensei is calculating…",
+    "victory": "Victory! +{points} Skill Points.",
+    "defeat": "Your King fell. Train again!",
+    "stalemate": "Draw — no legal moves. Reset to continue.",
+    "upgrades": {
+      "deepThought": {
+        "label": "Deep Thought",
+        "effect": "+1 Hard AI search ply per rank"
+      },
+      "openingRepertoire": {
+        "label": "Opening Repertoire",
+        "effect": "+10% Skill Points from Easy wins per rank"
+      },
+      "endgamePrecision": {
+        "label": "Endgame Precision",
+        "effect": "+10% Skill Points from Medium wins per rank"
+      }
+    }
+  },
+  "waveOutcome": {
+    "victoryTitle": "Wave cleared!",
+    "defeatTitle": "Wave failed",
+    "prepTitle": "Prep phase",
+    "stageCleared": "Stage {stage} cleared",
+    "stageFailed": "Stage {stage} lost",
+    "nextPhase": "Next: Stage {stage} · Prep",
+    "continuePrep": "Continue to prep",
+    "startNextWave": "Start next wave",
+    "statsHeading": "Wave summary",
+    "goldTotal": "Gold earned",
+    "goldClear": "Clear bonus",
+    "goldCaptures": "Capture payouts",
+    "goldActions": "Action drip",
+    "goldPromotion": "Promotion fanfare",
+    "damageDealt": "Damage dealt",
+    "damageTaken": "Damage taken",
+    "captures": "Pieces captured",
+    "actions": "Friendly actions",
+    "trophy": "Trophy earned: {name}",
+    "checkpoint": "Checkpoint: wave {stage}",
+    "failSoft": "Retry at {pct}% enemy HP (fail ×{count})",
+    "failRewind": "Returned to milestone wave {stage}"
+  }
+}

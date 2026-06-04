@@ -1,0 +1,112 @@
+{
+  "supporterStore": {
+    "title": "Supporter-Club",
+    "subtitle": "Optionale Komfort-Boni — danke für deine Unterstützung!",
+    "qolNotice": "Nur QoL: keine Kampf-Stats, keine Arena-Punkte. Bleibt nach Prestige.",
+    "unlock": "Freischalten",
+    "alreadyOwned": "Bereits freigeschaltet",
+    "thankYou": "Danke für deine Unterstützung! „{item}“ ist jetzt aktiv.",
+    "dismissThanks": "Schließen",
+    "advancedLogHeading": "Erweitertes Kampfprotokoll",
+    "goldPerAction": "Gold pro Aktion",
+    "damagePerAction": "Schaden pro Aktion",
+    "captureRate": "Schlagquote",
+    "items": {
+      "offlineGoldMultiplier": {
+        "label": "Offline-Gold-Multiplikator",
+        "effect": "1,5× Gold bei Abwesenheit (nur Offline-Drip)"
+      },
+      "autoShopAssistant": {
+        "label": "Auto-Shop-Assistent",
+        "effect": "Kauft beim Prep-Start automatisch das beste ROI-Upgrade"
+      },
+      "advancedCombatLog": {
+        "label": "Erweitertes Kampfprotokoll",
+        "effect": "Zusätzliche Analysen im Wellen-Ergebnis"
+      }
+    }
+  },
+  "arenaLoadout": {
+    "title": "Arena-Taktik-Loadout",
+    "subtitle": "Armee auf Reihen 1–2 aufstellen. Punktkosten nutzen aktuelle Upgrade-Stufen.",
+    "pointBudget": "Punktebudget",
+    "pointLine": "Armee-Wert: {total} / {cap}",
+    "kingRequired": "König muss auf dem Brett stehen",
+    "overCap": "Punktecap überschritten",
+    "deployedCount": "{count} Figuren platziert",
+    "rosterTitle": "Freigeschaltete Armee",
+    "rosterHint": "Auf cyan-Felder (Reihen 1–2) oder Auto-platzieren.",
+    "onBoard": "Platziert",
+    "deploy": "Platzieren",
+    "autoPlace": "Auto",
+    "remove": "Entfernen",
+    "save": "Loadout speichern",
+    "saveSuccess": "Ghost-Armee gespeichert ({id})",
+    "saveInvalid": "Speichern nicht möglich — König fehlt oder Cap überschritten.",
+    "boardIdle": "Figur wählen, dann markiertes Feld antippen.",
+    "boardDeploy": "Cyan-Feld auf Reihen 1–2 zum Platzieren antippen."
+  },
+  "chessDojo": {
+    "title": "Schach-Dojo",
+    "subtitle": "Trainingsraum — Taktik üben und Skillpunkte verdienen.",
+    "skillPoints": "Skillpunkte",
+    "elo": "Elo-Splitter",
+    "difficulty": "Schwierigkeit",
+    "difficulty_easy": "Leicht",
+    "difficulty_medium": "Mittel",
+    "difficulty_hard": "Schwer",
+    "winRewardPreview": "Sieg-Belohnung: +{points} SP",
+    "trainingRecord": "Trainings-Siege: {total}",
+    "shopTitle": "Meta-Upgrade-Shop",
+    "shopHint": "Skillpunkte für permanente Dojo-Boni ausgeben. Erschwingliche Upgrades sind hervorgehoben.",
+    "rank": "Rang {rank}/{max}",
+    "sp": "SP",
+    "maxed": "Max.",
+    "newMatch": "Neue Partie",
+    "yourTurn": "Du bist dran — Figur antippen, dann markiertes Feld.",
+    "selectTarget": "Ziel wählen (blau markiert).",
+    "aiTurn": "Sensei denkt nach…",
+    "aiThinking": "Sensei berechnet…",
+    "victory": "Sieg! +{points} Skillpunkte.",
+    "defeat": "Dein König ist gefallen. Weiter trainieren!",
+    "stalemate": "Remis — kein Zug möglich. Zurücksetzen zum Weiterspielen.",
+    "upgrades": {
+      "deepThought": {
+        "label": "Tiefes Denken",
+        "effect": "+1 Suchtiefe (Schwer) pro Rang"
+      },
+      "openingRepertoire": {
+        "label": "Eröffnungsrepertoire",
+        "effect": "+10 % Skillpunkte bei Leicht-Siegen pro Rang"
+      },
+      "endgamePrecision": {
+        "label": "Endspielpräzision",
+        "effect": "+10 % Skillpunkte bei Mittel-Siegen pro Rang"
+      }
+    }
+  },
+  "waveOutcome": {
+    "victoryTitle": "Welle geschafft!",
+    "defeatTitle": "Welle verloren",
+    "prepTitle": "Vorbereitung",
+    "stageCleared": "Stufe {stage} abgeschlossen",
+    "stageFailed": "Stufe {stage} verloren",
+    "nextPhase": "Weiter: Stufe {stage} · Vorbereitung",
+    "continuePrep": "Zur Vorbereitung",
+    "startNextWave": "Nächste Welle starten",
+    "statsHeading": "Wellen-Zusammenfassung",
+    "goldTotal": "Gold verdient",
+    "goldClear": "Abschluss-Bonus",
+    "goldCaptures": "Schach-Gold",
+    "goldActions": "Aktions-Drip",
+    "goldPromotion": "Promotions-Fanfare",
+    "damageDealt": "Schaden verursacht",
+    "damageTaken": "Schaden erhalten",
+    "captures": "Figuren geschlagen",
+    "actions": "Freundliche Aktionen",
+    "trophy": "Trophäe: {name}",
+    "checkpoint": "Checkpoint: Welle {stage}",
+    "failSoft": "Neuer Versuch bei {pct}% Gegner-HP (Fail ×{count})",
+    "failRewind": "Zurück zum Meilenstein Welle {stage}"
+  }
+}
