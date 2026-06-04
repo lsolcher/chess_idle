@@ -3,6 +3,7 @@
  * Unlocks gate purchases; buying deploys onto player ranks 0–1 (chess ranks 1–2).
  */
 import { buildOccupancy, coordKey, getAllPieces, type BoardCoord } from './board'
+import { calculateRecruitRoi } from '@/engine/upgrades'
 import {
   calculateUpgradeCost,
   countPlayerPieces,
@@ -131,6 +132,8 @@ export interface PieceShopOffer {
   affordable: boolean
   /** Milestone reached but other blocker (full board, roster cap, wrong phase). */
   purchasable: boolean
+  /** Marginal combat DPS per gold — comparable to upgrade ROI. */
+  roiScore: number
   lockedReason?: string
   preview: string
 }
@@ -144,6 +147,7 @@ export interface PieceShopCatalogInput {
   enemyPieces: ChessPiece[]
   unlockedSlots: UnlockedSlotsState
   deploySlots: number
+  globalSpeedMult?: number
 }
 
 function buildPieceOffer(
@@ -184,12 +188,16 @@ function buildPieceOffer(
     cost,
     affordable,
     purchasable: purchasable && affordable,
+    roiScore: calculateRecruitRoi(kind, cost, input.globalSpeedMult ?? 1),
     lockedReason,
     preview: `Tier ${def.tier} · ${def.baseAp} AP · deploys rank ${kind === 'pawn' ? 2 : '1–2'}`,
   }
 }
 
-function buildBoardSlotOffer(input: PieceShopCatalogInput): PieceShopOffer | null {
+function buildBoardSlotOffer(
+  input: PieceShopCatalogInput,
+  pieceOffers: PieceShopOffer[],
+): PieceShopOffer | null {
   if (input.deploySlots >= MAX_DEPLOY_SLOTS) return null
 
   const nextSlot = input.deploySlots + 1
@@ -200,6 +208,21 @@ function buildBoardSlotOffer(input: PieceShopCatalogInput): PieceShopOffer | nul
     calculateUpgradeCost(BOARD_SLOT_UPGRADE_BASE, BOARD_SLOT_UPGRADE_GROWTH, purchaseIndex),
   )
   const affordable = input.gold >= cost
+  const speed = input.globalSpeedMult ?? 1
+
+  const blockedRecruit = pieceOffers
+    .filter(
+      (o) =>
+        o.kind !== 'boardSlot' &&
+        o.affordable &&
+        !o.purchasable &&
+        o.lockedReason === 'Board full — buy a slot',
+    )
+    .sort((a, b) => b.roiScore - a.roiScore)[0]
+
+  const roiScore = blockedRecruit
+    ? blockedRecruit.roiScore * 0.95
+    : calculateRecruitRoi('pawn', cost, speed) * 0.5
 
   return {
     id: 'shop:boardSlot',
@@ -208,6 +231,7 @@ function buildBoardSlotOffer(input: PieceShopCatalogInput): PieceShopOffer | nul
     cost,
     affordable,
     purchasable: affordable && input.wavePhase === 'WAVE_PREP',
+    roiScore,
     lockedReason: input.wavePhase !== 'WAVE_PREP' ? 'Prep phase only' : undefined,
     preview: `Army size ${input.deploySlots} → ${nextSlot} (max ${MAX_DEPLOY_SLOTS})`,
   }
@@ -222,7 +246,7 @@ export function buildPieceShopCatalog(input: PieceShopCatalogInput): PieceShopOf
     if (offer) offers.push(offer)
   }
 
-  const slotOffer = buildBoardSlotOffer(input)
+  const slotOffer = buildBoardSlotOffer(input, offers)
   if (slotOffer) offers.push(slotOffer)
 
   return offers

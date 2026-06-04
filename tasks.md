@@ -169,8 +169,8 @@
 - [x] Wire QoL: `offlineProgress` + `persistConfig` read `hasOfflineGoldMultiplier`; `enterWavePrep` → `runSupporterAutoShopIfEnabled`; `WaveOutcomeModal` advanced log when `hasAdvancedCombatLog`.
 
 ## Phase 11: The Chess Town (Persistence & Meta-Base)
-- [ ] Implement Chess Town Core: Create `src/store/townStore.ts` to track building levels and town production rates.
-- [ ] Implement Building Logic: Add buildings like "Barracks" (+Piece AP), "Academy" (+Initiative speed), and "Treasury" (+Gold per stage).
-- [ ] Build Town UI (`src/components/ChessTown.vue`): A top-down, grid-based visual view of the town. Buildings should show "Construction" animations and progress bars.
-- [ ] Visual Tier Progression: Reuse `aestheticProgression.ts` logic — buildings should visually evolve (e.g., from wooden shack to stone citadel to glowing marble spire) as their levels increase.
-- [ ] Meta-Currency Sink: Integrate spending "Skill Points" (from Dojo) and "Elo Shards" (from Prestige) to upgrade town buildings, providing permanent account-wide bonuses.
+- [x] Implement Chess Town Core: Create `src/store/townStore.ts` to track building levels and town production rates.
+- [x] Implement Building Logic: Add buildings like "Barracks" (+Piece AP), "Academy" (+Initiative speed), and "Treasury" (+Gold per stage).
+- [x] Build Town UI (`src/components/ChessTown.vue`): A top-down, grid-based visual view of the town. Buildings should show "Construction" animations and progress bars.
+- [x] Visual Tier Progression: Reuse `aestheticProgression.ts` logic — buildings should visually evolve (e.g., from wooden shack to stone citadel to glowing marble spire) as their levels increase.
+- [x] Meta-Currency Sink: Integrate spending "Skill Points" (from Dojo) and "Elo Shards" (from Prestige) to upgrade town buildings, providing permanent account-wide bonuses.

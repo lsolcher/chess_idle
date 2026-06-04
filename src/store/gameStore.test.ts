@@ -6,6 +6,7 @@ import {
 } from '@/engine/grandmasterBoss'
 import { listGhostArmies } from '@/engine/ghostSystem'
 import { applySuperPromotion } from '@/engine/promotion'
+import { AUTO_ADVANCE_DELAY_MS } from '@/engine/waveAutomation'
 import { COMBO_CAP, COMBO_DECAY_MS, createPiece } from '@/types/game'
 import {
   createPiniaForTest,
@@ -454,6 +455,48 @@ describe('useGameStore', () => {
     expect(store.isWavePrep).toBe(true)
   })
 
+  it('does not auto-start until the clear modal is dismissed', () => {
+    const store = useGameStore()
+    store.initGame(0)
+    store.autoAdvanceWavesPurchased = true
+    store.autoAdvanceWavesEnabled = true
+    store.autoStartWavesEnabled = true
+    store.startWave(0)
+    store.enemyPieces = []
+    store.completeWave(0)
+
+    expect(store.showWaveOutcomeModal).toBe(true)
+    expect(store.waveCompleteAtMs).toBeNull()
+
+    store.tickWaveAutomation(5000)
+    expect(store.isWavePrep).toBe(true)
+
+    store.dismissWaveOutcome(5000)
+    expect(store.waveCompleteAtMs).toBe(5000)
+
+    store.tickWaveAutomation(5000 + AUTO_ADVANCE_DELAY_MS - 1)
+    expect(store.isWavePrep).toBe(true)
+
+    store.tickWaveAutomation(5000 + AUTO_ADVANCE_DELAY_MS)
+    expect(store.isWaveActive).toBe(true)
+  })
+
+  it('stays in prep after continue when auto-start combat is off', () => {
+    const store = useGameStore()
+    store.initGame(0)
+    store.autoAdvanceWavesPurchased = true
+    store.autoAdvanceWavesEnabled = true
+    store.autoStartWavesEnabled = false
+    store.startWave(0)
+    store.enemyPieces = []
+    store.completeWave(0)
+    store.dismissWaveOutcome(1000)
+
+    expect(store.waveCompleteAtMs).toBeNull()
+    store.tickWaveAutomation(1000 + AUTO_ADVANCE_DELAY_MS + 5000)
+    expect(store.isWavePrep).toBe(true)
+  })
+
   it('regens stamina faster under Royal Decree', () => {
     const store = useGameStore()
     store.initGame(0)
@@ -623,8 +666,8 @@ describe('useGameStore', () => {
     store.initGame(0)
     store.addGold(50_000)
     const beforeGold = store.gold
-    const best = store.upgradeOffers.find((o) => o.isBestRoi)
-    expect(best).toBeDefined()
+    const pickId = store.bestRoiUpgradeId
+    expect(pickId).toBeTruthy()
     expect(store.purchaseBestRoiUpgrade()).toBe(true)
     expect(store.gold).toBeLessThan(beforeGold)
   })

@@ -21,3 +21,6 @@ export const GHOST_ARMY_SCHEMA_VERSION = '0.8.0' as const
 /** Audio settings (`audioStore`). */
 export const AUDIO_SAVE_STORAGE_KEY = 'idle-chess-rpg-v0.3-audio' as const
 export const LEGACY_AUDIO_SAVE_STORAGE_KEY = 'idle-chess-rpg-v0.2-audio' as const
+
+/** Chess Town meta-base building levels (`townStore`). */
+export const TOWN_STORE_PERSIST_KEY = 'idle-chess-rpg-town-v1' as const

@@ -89,6 +89,10 @@ import {
 } from '@/engine/immortalGame'
 import { evaluateAutoAdvanceTick } from '@/engine/waveAutomation'
 import {
+  mergeTownBonuses,
+  NEUTRAL_TOWN_BONUSES,
+} from '@/engine/townBuildings'
+import {
   applyBossDamageReduction,
   applyKingReflectDamage,
   calculateIronRookReflectDamage,
@@ -135,6 +139,7 @@ import {
 import { ARENA_POINT_CAP, canSaveArenaLoadout } from '@/engine/arenaLoadout'
 import { shouldRunAutoShopAssistant } from '@/engine/supporterQoL'
 import { useMetaStore } from '@/store/metaStore'
+import { useTownStore } from '@/store/townStore'
 import { calculateArmyPvPValue } from '@/engine/pvpMath'
 import {
   exportArmySnapshot,
@@ -165,6 +170,7 @@ import {
 } from '@/engine/promotion'
 import {
   getHighlightedUpgradeCatalog,
+  pickBestAffordablePurchase,
   type UpgradeOffer,
 } from '@/engine/upgrades'
 import type { PersistenceOptions } from 'pinia-plugin-persistedstate'
@@ -206,6 +212,14 @@ import {
 
 /** Minimum stage before manual prestige unlocks (GDD §2.4). */
 export const PRESTIGE_UNLOCK_STAGE = 20
+
+/** Resolves meta tree + Chess Town bonuses for combat and economy getters. */
+function resolveEffectiveMetaModifiers(state: GameState) {
+  const base = calculateMetaModifiers(state.metaUpgrades)
+  const pinia = getActivePinia()
+  if (!pinia) return mergeTownBonuses(base, NEUTRAL_TOWN_BONUSES)
+  return mergeTownBonuses(base, useTownStore(pinia).getTownBonuses())
+}
 
 export interface AwardGoldOptions {
   applyActiveMult?: boolean
@@ -584,17 +598,30 @@ export const useGameStore = defineStore('game', {
     },
 
     bestRoiUpgradeId(state): string | null {
-      return state.currencies.gold > 0
-        ? (getHighlightedUpgradeCatalog({
-            gold: state.currencies.gold,
-            playerPieces: state.playerPieces,
-            clickPowerLevel: state.clickPowerLevel,
-            promotionMasteryLevel: state.promotion.masteryLevel,
-            globalSpeedMult: state.globalSpeedMult,
-            currentStage: state.currentStage,
-            autoAdvanceWavesPurchased: state.autoAdvanceWavesPurchased,
-          }).find((o) => o.isBestRoi)?.id ?? null)
-        : null
+      if (state.currencies.gold <= 0) return null
+      const pick = pickBestAffordablePurchase(
+        getHighlightedUpgradeCatalog({
+          gold: state.currencies.gold,
+          playerPieces: state.playerPieces,
+          clickPowerLevel: state.clickPowerLevel,
+          promotionMasteryLevel: state.promotion.masteryLevel,
+          globalSpeedMult: state.globalSpeedMult,
+          currentStage: state.currentStage,
+          autoAdvanceWavesPurchased: state.autoAdvanceWavesPurchased,
+        }),
+        buildPieceShopCatalog({
+          gold: state.currencies.gold,
+          maxStageReached: state.maxStageReached,
+          currentStage: state.currentStage,
+          wavePhase: state.wavePhase,
+          playerPieces: state.playerPieces,
+          enemyPieces: state.enemyPieces,
+          unlockedSlots: state.unlockedSlots,
+          deploySlots: state.deploySlots,
+          globalSpeedMult: state.globalSpeedMult,
+        }),
+      )
+      return pick?.id ?? null
     },
 
     pieceShopOffers(state): PieceShopOffer[] {
@@ -607,6 +634,7 @@ export const useGameStore = defineStore('game', {
         enemyPieces: state.enemyPieces,
         unlockedSlots: state.unlockedSlots,
         deploySlots: state.deploySlots,
+        globalSpeedMult: state.globalSpeedMult,
       })
     },
 
@@ -646,7 +674,7 @@ export const useGameStore = defineStore('game', {
     },
 
     metaModifiers(state) {
-      return calculateMetaModifiers(state.metaUpgrades)
+      return resolveEffectiveMetaModifiers(state)
     },
 
     metaTreeUnlocked(state): boolean {
@@ -662,7 +690,7 @@ export const useGameStore = defineStore('game', {
     },
 
     exhibitionGoldPerSec(state): number {
-      const mods = calculateMetaModifiers(state.metaUpgrades)
+      const mods = resolveEffectiveMetaModifiers(state)
       if (mods.exhibitionRank <= 0) return 0
       return calculateTotalExhibitionGoldPerSec(
         mods.exhibitionRank,
@@ -729,8 +757,19 @@ export const useGameStore = defineStore('game', {
       this.lastOfflineGoldGranted = 0
     },
 
-    dismissWaveOutcome(): void {
+    dismissWaveOutcome(nowMs = Date.now()): void {
+      const report = this.waveOutcomeReport
       this.waveOutcomeReport = null
+      if (
+        report?.kind === 'victory' &&
+        this.autoAdvanceWavesPurchased &&
+        this.autoAdvanceWavesEnabled &&
+        this.autoStartWavesEnabled
+      ) {
+        this.waveCompleteAtMs = nowMs
+      } else {
+        this.waveCompleteAtMs = null
+      }
     },
 
     resetWaveCombatStats(): void {
@@ -848,9 +887,11 @@ export const useGameStore = defineStore('game', {
       return true
     },
 
-    /** Recomputes prestige gold / speed / deploy slots from meta ranks. */
+    /** Recomputes prestige gold / speed / deploy slots from meta + town ranks. */
     applyMetaModifiers(): void {
-      applyMetaModifiersToState(readStoreState(this))
+      const pinia = getActivePinia()
+      const town = pinia ? useTownStore(pinia).getTownBonuses() : NEUTRAL_TOWN_BONUSES
+      applyMetaModifiersToState(readStoreState(this), town)
     },
 
     purchaseMetaUpgrade(id: MetaUpgradeId): boolean {
@@ -904,6 +945,7 @@ export const useGameStore = defineStore('game', {
       Object.assign(this.$state, next)
       this.syncMilestoneUnlocks()
       this.syncRoyalDecree()
+      this.applyMetaModifiers()
       this.enterWavePrep(nowMs)
       playGameSfx('prestige')
       return true
@@ -930,7 +972,7 @@ export const useGameStore = defineStore('game', {
     },
 
     tickExhibitions(nowMs = Date.now()): number {
-      const mods = calculateMetaModifiers(this.metaUpgrades)
+      const mods = this.metaModifiers
       if (mods.exhibitionRank <= 0) {
         this.exhibitionLastTickMs = nowMs
         return 0
@@ -1154,7 +1196,7 @@ export const useGameStore = defineStore('game', {
         trophyName: trophy?.trophyName ?? null,
         checkpointStage: this.waveCheckpointStage,
       })
-      this.waveCompleteAtMs = nowMs
+      this.waveCompleteAtMs = null
     },
 
     /**
@@ -1245,6 +1287,9 @@ export const useGameStore = defineStore('game', {
     setAutoStartWavesEnabled(enabled: boolean): void {
       if (!this.autoAdvanceWavesPurchased) return
       this.autoStartWavesEnabled = enabled
+      if (!enabled) {
+        this.waveCompleteAtMs = null
+      }
     },
 
     /**
@@ -1258,6 +1303,7 @@ export const useGameStore = defineStore('game', {
         waveCompleteAtMs: this.waveCompleteAtMs,
         nowMs,
         autoStartNextWave: this.autoStartWavesEnabled,
+        prepUiBlocked: this.waveOutcomeReport !== null,
       })
 
       this.waveCompleteAtMs = tick.waveCompleteAtMs
@@ -1802,7 +1848,7 @@ export const useGameStore = defineStore('game', {
       }
 
       if (combat.captured && move.capturedPieceId && move.side === 'enemy') {
-        const meta = calculateMetaModifiers(this.metaUpgrades)
+        const meta = this.metaModifiers
         const revived = tryImmortalRevive(
           playerBefore,
           combat.playerPieces,
@@ -1957,7 +2003,7 @@ export const useGameStore = defineStore('game', {
 
       const allPieces = getAllPieces(this.playerPieces, this.enemyPieces)
       const decreeMods = getRoyalDecreeModifiers(this.royalDecree)
-      const meta = calculateMetaModifiers(this.metaUpgrades)
+      const meta = this.metaModifiers
       const move = selectBestMove(piece, {
         allPieces,
         decreeStepEnabled: decreeMods.decreeStepEnabled,
@@ -2310,6 +2356,7 @@ export const useGameStore = defineStore('game', {
         if (!this.spendGold(offer.cost)) return false
         this.autoAdvanceWavesPurchased = true
         this.autoAdvanceWavesEnabled = true
+        this.autoStartWavesEnabled = false
         this.recordUpgradePurchase()
         playGameSfx('upgrade')
         return true
@@ -2327,7 +2374,7 @@ export const useGameStore = defineStore('game', {
         levels[offer.track] = offer.nextLevel
       }
 
-      const meta = calculateMetaModifiers(this.metaUpgrades)
+      const meta = this.metaModifiers
       const stats = buildPieceStats(piece.kind, levels)
       const scaledAp = stats.ap * meta.apMult
       const hpRatio = piece.stats.maxHp > 0 ? piece.stats.hp / piece.stats.maxHp : 1
@@ -2351,9 +2398,12 @@ export const useGameStore = defineStore('game', {
     },
 
     purchaseBestRoiUpgrade(): boolean {
-      const best = this.upgradeOffers.find((o) => o.isBestRoi)
-      if (!best) return false
-      return this.purchaseUpgradeOffer(best.id)
+      const pick = pickBestAffordablePurchase(this.upgradeOffers, this.pieceShopOffers)
+      if (!pick) return false
+      if (pick.source === 'shop') {
+        return this.purchasePieceShopOffer(pick.id)
+      }
+      return this.purchaseUpgradeOffer(pick.id)
     },
 
     /**

@@ -20,7 +20,7 @@ export const AUTO_ADVANCE_WAVE_COST = 750
 
 
 
-/** Delay after entering prep post-clear before auto-start (lets clear gold UI register). */
+/** Delay after dismissing the clear modal before optional auto-start. */
 
 export const AUTO_ADVANCE_DELAY_MS = 1_200
 
@@ -39,6 +39,10 @@ export interface AutoAdvanceTickInput {
   nowMs: number
 
   autoStartNextWave: boolean
+
+  /** True while the wave outcome modal is open — blocks auto-start until dismissed. */
+
+  prepUiBlocked?: boolean
 
 }
 
@@ -67,6 +71,20 @@ export function evaluateAutoAdvanceTick(input: AutoAdvanceTickInput): AutoAdvanc
     return {
 
       waveCompleteAtMs: null,
+
+      shouldStartWave: false,
+
+    }
+
+  }
+
+
+
+  if (input.prepUiBlocked) {
+
+    return {
+
+      waveCompleteAtMs: input.waveCompleteAtMs,
 
       shouldStartWave: false,
 

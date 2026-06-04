@@ -4,6 +4,11 @@
  */
 import { BASE_DEPLOY_SLOTS } from '@/engine/pieceShop'
 import {
+  mergeTownBonuses,
+  NEUTRAL_TOWN_BONUSES,
+  type TownBonuses,
+} from '@/engine/townBuildings'
+import {
   createDefaultMetaUpgrades,
   META_UPGRADE_DEFINITIONS,
   type AchievementFlags,
@@ -159,10 +164,13 @@ function describeMetaEffect(id: MetaUpgradeId, nextRank: number, _mods: MetaModi
 }
 
 /**
- * Applies meta modifiers onto run-scoped GameState fields after prestige or purchase.
+ * Applies meta + town modifiers onto run-scoped GameState fields after prestige or purchase.
  */
-export function applyMetaModifiersToState(state: GameState): void {
-  const mods = calculateMetaModifiers(state.metaUpgrades)
+export function applyMetaModifiersToState(
+  state: GameState,
+  town: TownBonuses = NEUTRAL_TOWN_BONUSES,
+): void {
+  const mods = mergeTownBonuses(calculateMetaModifiers(state.metaUpgrades), town)
   state.prestigeGoldMult = mods.goldMult
   state.globalSpeedMult = mods.globalSpeedMult
   state.enPassantEconomyRank = state.metaUpgrades.enPassantEconomy ?? 0

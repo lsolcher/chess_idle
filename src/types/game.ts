@@ -826,7 +826,7 @@ export function createInitialGameState(nowMs = Date.now()): GameState {
     pendingPromotion: null,
     autoAdvanceWavesPurchased: false,
     autoAdvanceWavesEnabled: false,
-    autoStartWavesEnabled: true,
+    autoStartWavesEnabled: false,
     waveCompleteAtMs: null,
     enPassantCarryByPieceId: {},
     bossTrophiesClaimed: [],

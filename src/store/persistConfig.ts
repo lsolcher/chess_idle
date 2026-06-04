@@ -39,6 +39,7 @@ export const PERSIST_OMIT_PATHS: (keyof GameState)[] = [
   'lastOfflineGoldGranted',
   'waveCombatStats',
   'waveOutcomeReport',
+  'waveCompleteAtMs',
 ]
 
 /**
@@ -64,7 +65,7 @@ export function restorePersistedSession(
     hasPrestigedOnce: state.hasPrestigedOnce ?? false,
     autoAdvanceWavesPurchased: state.autoAdvanceWavesPurchased ?? false,
     autoAdvanceWavesEnabled: state.autoAdvanceWavesEnabled ?? false,
-    autoStartWavesEnabled: state.autoStartWavesEnabled ?? true,
+    autoStartWavesEnabled: state.autoStartWavesEnabled ?? false,
     autoAiPersonality: normalizeAutoAiPersonality(state.autoAiPersonality),
     combatFocus: normalizeCombatFocus(state.combatFocus, state.autoMode ?? true),
     enPassantCarryByPieceId: state.enPassantCarryByPieceId ?? {},

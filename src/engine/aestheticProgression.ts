@@ -198,3 +198,42 @@ export function buildAestheticProgressSnapshot(
     permanentTrophies: resolvePermanentVisualTrophies(maxStageEver, totalPrestiges),
   }
 }
+
+/** Maps a building level to the same visual tier curve used for the living board. */
+export function getBuildingVisualTier(buildingLevel: number): number {
+  return getVisualTier(Math.max(1, buildingLevel))
+}
+
+/** Human-readable building evolution step for town UI. */
+export function getBuildingVisualLabel(tier: number): string {
+  if (tier <= 0) return 'Shack'
+  if (tier <= 2) return 'Hut'
+  if (tier <= 4) return 'House'
+  if (tier <= 6) return 'Tower'
+  if (tier <= 8) return 'Citadel'
+  return 'Spire'
+}
+
+/** Tailwind skin classes per visual tier (top-down town sprites). */
+export function getBuildingVisualClasses(tier: number): string {
+  switch (tier) {
+    case 0:
+      return 'bg-amber-900/80 border-amber-950/60'
+    case 1:
+      return 'bg-amber-800/85 border-amber-900/70 shadow-[inset_0_-4px_0_rgba(0,0,0,0.15)]'
+    case 2:
+      return 'bg-stone-700/90 border-stone-600/70 shadow-[inset_0_-6px_0_rgba(0,0,0,0.2)]'
+    case 3:
+      return 'bg-stone-600/90 border-stone-500/70 ring-1 ring-stone-400/20'
+    case 4:
+      return 'bg-slate-600/90 border-slate-500/70 shadow-[0_0_12px_rgba(148,163,184,0.15)]'
+    case 5:
+      return 'bg-sky-900/80 border-sky-700/60 shadow-[0_0_14px_rgba(56,189,248,0.12)]'
+    case 6:
+      return 'bg-violet-900/80 border-violet-600/50 shadow-[0_0_16px_rgba(139,92,246,0.18)]'
+    case 7:
+      return 'bg-amber-950/85 border-amber-500/40 shadow-[0_0_18px_rgba(245,158,11,0.2)]'
+    default:
+      return 'bg-fuchsia-950/85 border-fuchsia-400/40 shadow-[0_0_22px_rgba(217,70,239,0.25)] ring-1 ring-fuchsia-300/30'
+  }
+}

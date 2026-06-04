@@ -5,6 +5,7 @@ import CosmeticsPanel from '@/components/CosmeticsPanel.vue'
 import ArenaLoadout from '@/components/ArenaLoadout.vue'
 import SupporterStore from '@/components/SupporterStore.vue'
 import ChessDojo from '@/components/ChessDojo.vue'
+import ChessTown from '@/components/ChessTown.vue'
 import MetaUpgradePanel from '@/components/MetaUpgradePanel.vue'
 import PieceShopPanel from '@/components/PieceShopPanel.vue'
 import { useGameStore } from '@/store'
@@ -17,6 +18,7 @@ type UpgradeTab =
   | 'click'
   | 'meta'
   | 'dojo'
+  | 'town'
   | 'arena'
   | 'supporter'
   | 'wardrobe'
@@ -32,6 +34,7 @@ const tabs: { id: UpgradeTab; label: string; disabled?: boolean }[] = [
   { id: 'click', label: 'Click' },
   { id: 'meta', label: 'Meta' },
   { id: 'dojo', label: 'Dojo' },
+  { id: 'town', label: 'Town' },
   { id: 'arena', label: 'Arena' },
   { id: 'supporter', label: 'Club' },
   { id: 'wardrobe', label: 'Themes' },
@@ -109,6 +112,8 @@ function onTabSelect(tabId: UpgradeTab): void {
     <MetaUpgradePanel v-else-if="activeTab === 'meta'" />
 
     <ChessDojo v-else-if="activeTab === 'dojo'" class="border-0 bg-transparent" />
+
+    <ChessTown v-else-if="activeTab === 'town'" class="border-0 bg-transparent" />
 
     <ArenaLoadout v-else-if="activeTab === 'arena'" class="border-0 bg-transparent" />
 

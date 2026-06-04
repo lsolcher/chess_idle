@@ -85,6 +85,32 @@
       }
     }
   },
+  "chessTown": {
+    "title": "Chess Town",
+    "subtitle": "Permanent base — upgrade buildings for account-wide bonuses.",
+    "persistNotice": "Town levels persist across prestige resets.",
+    "townView": "Top-down town view",
+    "skillPoints": "Skill Points",
+    "eloShards": "Elo Shards",
+    "bonusAp": "Army AP",
+    "bonusSpeed": "Initiative",
+    "bonusGold": "Gold income",
+    "level": "Level {level}/{max}",
+    "constructing": "Construction in progress…",
+    "upgrade": "Upgrade",
+    "maxed": "Max level",
+    "buildings": {
+      "barracks": {
+        "label": "Barracks"
+      },
+      "academy": {
+        "label": "Academy"
+      },
+      "treasury": {
+        "label": "Treasury"
+      }
+    }
+  },
   "waveOutcome": {
     "victoryTitle": "Wave cleared!",
     "defeatTitle": "Wave failed",

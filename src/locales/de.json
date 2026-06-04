@@ -85,6 +85,32 @@
       }
     }
   },
+  "chessTown": {
+    "title": "Schachstadt",
+    "subtitle": "Permanente Basis — Gebäude für accountweite Boni ausbauen.",
+    "persistNotice": "Stadt-Level bleiben nach Prestige erhalten.",
+    "townView": "Draufsicht auf die Stadt",
+    "skillPoints": "Skillpunkte",
+    "eloShards": "Elo-Splitter",
+    "bonusAp": "Armee-AP",
+    "bonusSpeed": "Initiative",
+    "bonusGold": "Gold-Einkommen",
+    "level": "Stufe {level}/{max}",
+    "constructing": "Bauarbeiten laufen…",
+    "upgrade": "Ausbauen",
+    "maxed": "Max. Stufe",
+    "buildings": {
+      "barracks": {
+        "label": "Kaserne"
+      },
+      "academy": {
+        "label": "Akademie"
+      },
+      "treasury": {
+        "label": "Schatzkammer"
+      }
+    }
+  },
   "waveOutcome": {
     "victoryTitle": "Welle geschafft!",
     "defeatTitle": "Welle verloren",

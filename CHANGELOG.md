@@ -21,9 +21,19 @@ All notable changes to Idle Chess RPG are documented here ([Keep a Changelog](ht
 - `GAME_SCHEMA_VERSION` → `0.3.0`.
 - Upgrade panel tabs: **Dojo**, **Arena**, **Club** (Supporter).
 
+### Added
+
+- **Phase 11 — Chess Town:** `townStore.ts` + `townBuildings.ts` with Barracks (AP), Academy (initiative speed), Treasury (gold); `ChessTown.vue` top-down town grid; **Town** tab in Upgrades; persists via `idle-chess-rpg-town-v1`.
+
+### Fixed
+
+- Wave prep no longer auto-starts combat while the clear modal is open; auto-start (if enabled) begins only after **Continue to prep**, not when the wave clears.
+- **Auto-start combat** is off by default — prep stays open for shopping until you press **Start Wave** unless you opt in via the Auto-Advance toggles.
+- **Buy Best ROI** now compares all prep purchases on a unified DPS/gold scale (upgrades, recruits, board slots) and excludes QoL auto-advance from the pick.
+
 ### Tests
 
-- **281** Vitest tests passing (`vue-tsc -b` green).
+- **302** Vitest tests passing (`vue-tsc -b` green).
 
 ---
 

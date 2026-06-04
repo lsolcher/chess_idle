@@ -2,6 +2,10 @@ export { useGameStore, runGameStoreSanityCheck, createPiniaForTest, PRESTIGE_UNL
 export type { AwardGoldOptions } from './gameStore'
 export { useAudioStore } from './audioStore'
 export {
+  useTownStore,
+  createInitialTownStoreState,
+} from './townStore'
+export {
   useMetaStore,
   DOJO_UPGRADE_DEFINITIONS,
   CONVENIENCE_UPGRADE_DEFINITIONS,

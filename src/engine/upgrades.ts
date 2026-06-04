@@ -1,11 +1,13 @@
 /**
  * Upgrade catalog and ROI scoring for the Upgrade Panel (GDD §2.3, §5.1).
- * ROI = relative stat gain per gold spent — used to highlight best purchase.
+ * ROI = marginal combat DPS (or click DPS) gained per gold spent.
  */
 import {
   AUTO_ADVANCE_UNLOCK_STAGE,
   AUTO_ADVANCE_WAVE_COST,
 } from '@/engine/waveAutomation'
+import { CLICK_COOLDOWN_SEC, CLICK_POWER_BASE } from '@/engine/clickCombat'
+import type { PieceShopOffer } from '@/engine/pieceShop'
 import {
   calculateActionIntervalSec,
   calculateStatAtLevel,
@@ -15,6 +17,7 @@ import {
   getStatUpgradeBaseCost,
   INITIATIVE_UPGRADE_CONFIG,
   PIECE_DEFINITIONS,
+  PROMOTION_MASTERY_STAT_BONUS,
   STAT_UPGRADE_CONFIG,
   type ChessPiece,
   type PieceKind,
@@ -54,6 +57,12 @@ export interface UpgradeCatalogInput {
   autoAdvanceWavesPurchased: boolean
 }
 
+export interface BestPurchasePick {
+  id: string
+  roiScore: number
+  source: 'upgrade' | 'shop'
+}
+
 const TRACK_LABEL: Record<UpgradeTrackId, string> = {
   ap: 'Attack',
   hp: 'Durability',
@@ -64,9 +73,41 @@ const TRACK_LABEL: Record<UpgradeTrackId, string> = {
   autoAdvanceWaves: 'Auto-Advance Waves',
 }
 
+/** HP/DEF upgrades extend uptime — weighted fraction of current piece DPS. */
+const HP_DPS_WEIGHT = 0.5
+const DEF_DPS_WEIGHT = 0.4
+
+/** Typical click context for ROI when combo/active state is unknown. */
+const CLICK_ASSUMED_ACTIVE_MULT = 2
+const CLICK_ASSUMED_PIECE_MULT = 3
+
+const COMBAT_UPGRADE_TRACKS = new Set<UpgradeTrackId>([
+  'ap',
+  'hp',
+  'def',
+  'initiative',
+  'clickPower',
+  'promotionMastery',
+])
+
+/** Marginal action DPS for a piece at its current stats and INI level. */
+export function estimatePieceActionDps(
+  piece: ChessPiece,
+  globalSpeedMult: number,
+): number {
+  const def = PIECE_DEFINITIONS[piece.kind]
+  const interval = calculateActionIntervalSec(
+    piece.initiative.baseIntervalSec ?? def.baseIntervalSec,
+    piece.upgradeLevels.initiative,
+    globalSpeedMult,
+  )
+  if (interval <= 0) return 0
+  return piece.stats.ap / interval
+}
+
 /**
- * ROI proxy: marginal combat value gained divided by gold cost.
- * Initiative uses seconds saved per gold; globals use level value / cost.
+ * ROI proxy: marginal combat DPS gained divided by gold cost.
+ * All tracks normalize to the same DPS/gold unit before comparison.
  */
 export function calculateTrackRoi(
   piece: ChessPiece,
@@ -77,36 +118,95 @@ export function calculateTrackRoi(
   if (cost <= 0) return 0
   const def = PIECE_DEFINITIONS[piece.kind]
   const levels = piece.upgradeLevels
+  const interval = calculateActionIntervalSec(
+    def.baseIntervalSec,
+    levels.initiative,
+    globalSpeedMult,
+  )
+  if (interval <= 0) return 0
+
+  const currentAp = piece.stats.ap
 
   switch (track) {
     case 'ap': {
       const cur = calculateStatAtLevel(def.baseAp, levels.ap)
       const next = calculateStatAtLevel(def.baseAp, levels.ap + 1)
-      return (next - cur) / cost
+      return (next - cur) / interval / cost
     }
     case 'hp': {
-      const cur = calculateStatAtLevel(def.baseHp, levels.hp)
-      const next = calculateStatAtLevel(def.baseHp, levels.hp + 1)
-      return (next - cur) / cost / 2
+      const curMax = calculateStatAtLevel(def.baseHp, levels.hp)
+      const nextMax = calculateStatAtLevel(def.baseHp, levels.hp + 1)
+      const currentDps = currentAp / interval
+      const marginalDps = currentDps * ((nextMax - curMax) / Math.max(curMax, 1)) * HP_DPS_WEIGHT
+      return marginalDps / cost
     }
     case 'def': {
-      const cur = calculateStatAtLevel(def.baseDef, levels.def)
-      const next = calculateStatAtLevel(def.baseDef, levels.def + 1)
-      return (next - cur) / cost / 2
+      const curDef = calculateStatAtLevel(def.baseDef, levels.def)
+      const nextDef = calculateStatAtLevel(def.baseDef, levels.def + 1)
+      const currentDps = currentAp / interval
+      const marginalDps =
+        currentDps * ((nextDef - curDef) / (curDef + 10)) * DEF_DPS_WEIGHT
+      return marginalDps / cost
     }
     case 'initiative': {
       if (levels.initiative >= INITIATIVE_UPGRADE_CONFIG.maxLevel) return 0
-      const before = calculateActionIntervalSec(def.baseIntervalSec, levels.initiative, globalSpeedMult)
       const after = calculateActionIntervalSec(
         def.baseIntervalSec,
         levels.initiative + 1,
         globalSpeedMult,
       )
-      return (before - after) / cost
+      const marginalDps = currentAp * (1 / after - 1 / interval)
+      return marginalDps / cost
     }
     default:
       return 0
   }
+}
+
+export function calculateClickPowerRoi(clickPowerLevel: number, cost: number): number {
+  if (cost <= 0 || clickPowerLevel >= 30) return 0
+  const cur = calculateStatAtLevel(CLICK_POWER_BASE, clickPowerLevel)
+  const next = calculateStatAtLevel(CLICK_POWER_BASE, clickPowerLevel + 1)
+  const deltaClickDps =
+    (next - cur) *
+    CLICK_ASSUMED_PIECE_MULT *
+    CLICK_ASSUMED_ACTIVE_MULT /
+    CLICK_COOLDOWN_SEC
+  return deltaClickDps / cost
+}
+
+export function calculatePromotionMasteryRoi(
+  playerPieces: ChessPiece[],
+  cost: number,
+  globalSpeedMult: number,
+): number {
+  if (cost <= 0) return 0
+
+  let affectedDps = 0
+  for (const piece of playerPieces.filter((p) => p.side === 'player')) {
+    const dps = estimatePieceActionDps(piece, globalSpeedMult)
+    if (piece.superPromotion) {
+      affectedDps += dps
+    } else if (piece.kind === 'pawn') {
+      affectedDps += dps * 2.5 * 0.3
+    }
+  }
+
+  return (affectedDps * PROMOTION_MASTERY_STAT_BONUS) / cost
+}
+
+/** New piece combat throughput at recruit (level-1 stats, INI 0). */
+export function calculateRecruitRoi(
+  kind: PieceKind,
+  cost: number,
+  globalSpeedMult: number,
+): number {
+  if (cost <= 0 || kind === 'king') return 0
+  const def = PIECE_DEFINITIONS[kind]
+  const ap = calculateStatAtLevel(def.baseAp, 1)
+  const interval = calculateActionIntervalSec(def.baseIntervalSec, 0, globalSpeedMult)
+  if (interval <= 0) return 0
+  return ap / interval / cost
 }
 
 function pieceTrackOffer(
@@ -183,7 +283,7 @@ export function buildUpgradeCatalog(input: UpgradeCatalogInput): UpgradeOffer[] 
       currentLevel: input.clickPowerLevel,
       nextLevel: clickNext,
       maxLevel: 30,
-      roiScore: 1 / clickCost,
+      roiScore: calculateClickPowerRoi(input.clickPowerLevel, clickCost),
       affordable: input.gold >= clickCost,
       preview: `Lv ${input.clickPowerLevel} → ${clickNext}`,
     })
@@ -200,7 +300,11 @@ export function buildUpgradeCatalog(input: UpgradeCatalogInput): UpgradeOffer[] 
       currentLevel: input.promotionMasteryLevel,
       nextLevel: promoNext,
       maxLevel: 15,
-      roiScore: 1.2 / promoCost,
+      roiScore: calculatePromotionMasteryRoi(
+        input.playerPieces,
+        promoCost,
+        input.globalSpeedMult,
+      ),
       affordable: input.gold >= promoCost,
       preview: `+10% super stats · Lv ${promoNext}`,
     })
@@ -218,7 +322,7 @@ export function buildUpgradeCatalog(input: UpgradeCatalogInput): UpgradeOffer[] 
       currentLevel: 0,
       nextLevel: 1,
       maxLevel: 1,
-      roiScore: 2 / AUTO_ADVANCE_WAVE_COST,
+      roiScore: 0,
       affordable: input.gold >= AUTO_ADVANCE_WAVE_COST,
       preview: 'Auto Next Wave + auto-start after clear',
     })
@@ -227,14 +331,54 @@ export function buildUpgradeCatalog(input: UpgradeCatalogInput): UpgradeOffer[] 
   return offers.sort((a, b) => b.roiScore - a.roiScore)
 }
 
-/** Marks the highest ROI affordable offer for UI highlight (GDD §5.3). */
+/** Highest combat ROI among affordable upgrade offers (excludes QoL auto-advance). */
+export function pickBestAffordableUpgrade(offers: UpgradeOffer[]): UpgradeOffer | null {
+  return (
+    offers
+      .filter(
+        (o) =>
+          o.affordable &&
+          o.roiScore > 0 &&
+          COMBAT_UPGRADE_TRACKS.has(o.track),
+      )
+      .sort((a, b) => b.roiScore - a.roiScore)[0] ?? null
+  )
+}
+
+/** Marks the highest ROI affordable combat offer for UI highlight (GDD §5.3). */
 export function markBestRoiOffers(offers: UpgradeOffer[]): UpgradeOffer[] {
-  const bestAffordable = offers.filter((o) => o.affordable).sort((a, b) => b.roiScore - a.roiScore)[0]
+  const bestAffordable = pickBestAffordableUpgrade(offers)
   if (!bestAffordable) return offers
   return offers.map((offer) => ({
     ...offer,
     isBestRoi: offer.id === bestAffordable.id,
   }))
+}
+
+/** Highest-ROI affordable prep purchase across upgrades and the piece shop. */
+export function pickBestAffordablePurchase(
+  upgrades: UpgradeOffer[],
+  shopOffers: PieceShopOffer[],
+): BestPurchasePick | null {
+  const bestUpgrade = pickBestAffordableUpgrade(upgrades)
+  const bestShop = shopOffers
+    .filter((o) => o.purchasable && o.affordable && o.roiScore > 0)
+    .sort((a, b) => b.roiScore - a.roiScore)[0]
+
+  if (!bestUpgrade && !bestShop) return null
+  if (!bestShop || (bestUpgrade && bestUpgrade.roiScore >= bestShop.roiScore)) {
+    return {
+      id: bestUpgrade!.id,
+      roiScore: bestUpgrade!.roiScore,
+      source: 'upgrade',
+    }
+  }
+
+  return {
+    id: bestShop.id,
+    roiScore: bestShop.roiScore,
+    source: 'shop',
+  }
 }
 
 export function getHighlightedUpgradeCatalog(input: UpgradeCatalogInput): UpgradeOffer[] {
@@ -265,6 +409,13 @@ export function runUpgradeCatalogSanityCheck(): { passed: boolean; messages: str
 
   const highlighted = markBestRoiOffers(catalog)
   assert('exactly one best ROI when affordable', highlighted.filter((o) => o.isBestRoi).length === 1)
+
+  const best = pickBestAffordableUpgrade(catalog)
+  assert('best pick matches highlighted offer', best?.id === highlighted.find((o) => o.isBestRoi)?.id)
+
+  const iniRoi = calculateTrackRoi(state.playerPieces[0]!, 'initiative', 80, 1)
+  const apRoi = calculateTrackRoi(state.playerPieces[0]!, 'ap', 100, 1)
+  assert('AP and INI ROI share DPS/gold units', iniRoi > 0 && apRoi > 0)
 
   return { passed, messages }
 }

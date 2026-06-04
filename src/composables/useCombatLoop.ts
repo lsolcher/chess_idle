@@ -1,6 +1,7 @@
 import { onMounted, onUnmounted } from 'vue'
 
 import { useGameStore } from '@/store'
+import { useTownStore } from '@/store/townStore'
 
 
 
@@ -15,6 +16,7 @@ import { useGameStore } from '@/store'
 export function useCombatLoop(): { start: () => void; stop: () => void } {
 
   const store = useGameStore()
+  const town = useTownStore()
 
   let frameId = 0
 
@@ -22,6 +24,7 @@ export function useCombatLoop(): { start: () => void; stop: () => void } {
 
   const loop = (): void => {
     store.tickExhibitions()
+    town.tickTown()
     store.tickWaveAutomation()
     if (store.isWaveActive && store.isCombatLoopRunning) {
       store.tickCombat()

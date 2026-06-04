@@ -36,4 +36,18 @@ describe('waveAutomation', () => {
     })
     expect(result.shouldStartWave).toBe(false)
   })
+
+  it('does not auto-start while the outcome modal is open', () => {
+    const result = evaluateAutoAdvanceTick({
+      wavePhase: 'WAVE_PREP',
+      purchased: true,
+      enabled: true,
+      waveCompleteAtMs: 1000,
+      nowMs: 1000 + AUTO_ADVANCE_DELAY_MS,
+      autoStartNextWave: true,
+      prepUiBlocked: true,
+    })
+    expect(result.shouldStartWave).toBe(false)
+    expect(result.waveCompleteAtMs).toBe(1000)
+  })
 })
