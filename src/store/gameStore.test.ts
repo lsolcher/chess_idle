@@ -102,24 +102,36 @@ describe('useGameStore', () => {
     expect(store.purchasePieceFromShop('pawn', 0)).toBe(false)
   })
 
-  it('unlocks second pawn slot at stage 6 milestone', () => {
+  it('unlocks second pawn slot at stage 4 milestone', () => {
     const store = useGameStore()
     store.initGame(0)
-    store.$patch({ maxStageReached: 6, currentStage: 6 })
+    store.$patch({ maxStageReached: 4, currentStage: 4 })
     store.syncMilestoneUnlocks()
     expect(store.unlockedSlots.pawn).toBe(2)
   })
 
-  it('purchases board slot upgrade in prep', () => {
+  it('purchases board slot upgrade when roster allows more pieces', () => {
     const store = useGameStore()
     store.initGame(0)
+    store.$patch({ maxStageReached: 8, currentStage: 8 })
+    store.syncMilestoneUnlocks()
+    store.$patch({ deploySlots: 3 })
     store.addGold(10_000)
+    expect(store.purchasePieceFromShop('pawn', 0)).toBe(true)
+    expect(store.purchasePieceFromShop('pawn', 0)).toBe(true)
     const before = store.deploySlots
     expect(store.purchaseBoardSlot(0)).toBe(true)
     expect(store.deploySlots).toBe(before + 1)
   })
 
-  it('deploying a pawn permanently disables Royal Decree', () => {
+  it('blocks board slot purchase at roster deploy cap', () => {
+    const store = useGameStore()
+    store.initGame(0)
+    store.addGold(10_000)
+    expect(store.purchaseBoardSlot(0)).toBe(false)
+  })
+
+  it('deploying a pawn ends full decree; solo king can last stand', () => {
     const store = useGameStore()
     store.initGame(0)
 
@@ -128,11 +140,13 @@ describe('useGameStore', () => {
 
     expect(store.playerPieceCount).toBe(2)
     expect(store.isRoyalDecreeActive).toBe(false)
-    expect(store.royalDecree.permanentlyExpired).toBe(true)
+    expect(store.royalDecree.armyBuilt).toBe(true)
 
-    store.removePlayerPiece('player-king-0')
+    const pawnId = store.playerPieces.find((p) => p.kind === 'pawn')?.id
+    if (pawnId) store.removePlayerPiece(pawnId)
     store.syncRoyalDecree()
-    expect(store.isRoyalDecreeActive).toBe(false)
+    expect(store.isRoyalDecreeActive).toBe(true)
+    expect(store.royalDecree.mode).toBe('lastStand')
   })
 
   it('initiative loop awards gold when king bar fills', () => {
@@ -184,6 +198,9 @@ describe('useGameStore', () => {
 
     store.enemyPieces = []
     store.evaluateWaveOutcome()
+    expect(store.isWaveComplete).toBe(true)
+    expect(store.currentStage).toBe(1)
+    store.dismissWaveOutcome()
     expect(store.isWavePrep).toBe(true)
     expect(store.currentStage).toBe(2)
     expect(store.gold).toBeGreaterThan(0)
@@ -414,13 +431,16 @@ describe('useGameStore', () => {
     store.startWave(0)
     store.enemyPieces = []
     store.evaluateWaveOutcome()
-    expect(store.isWavePrep).toBe(true)
+    expect(store.isWaveComplete).toBe(true)
+    expect(store.currentStage).toBe(1)
 
-    expect(store.advanceStage(0)).toBe(false)
+    expect(store.advanceStage(0)).toBe(true)
     expect(store.currentStage).toBe(2)
     expect(store.isWavePrep).toBe(true)
     expect(store.friendlyActionsThisStage).toBe(0)
     expect(store.promotion.streak).toBe(0)
+
+    expect(store.advanceStage(0)).toBe(false)
 
     store.$patch({ wavePhase: 'WAVE_COMPLETE', currentStage: PRESTIGE_UNLOCK_STAGE - 1 })
     store.advanceStage()
@@ -440,18 +460,22 @@ describe('useGameStore', () => {
     expect(store.playerPieces.find((p) => p.id === 'prep-pawn')!.position).toEqual(move.to)
   })
 
-  it('auto-advance waits in prep before optional auto-start', () => {
+  it('auto-advance stays in prep until Start Wave is pressed', () => {
     const store = useGameStore()
     store.initGame(0)
     store.autoAdvanceWavesPurchased = true
     store.autoAdvanceWavesEnabled = true
-    store.autoStartWavesEnabled = false
+    store.autoStartWavesEnabled = true
     store.startWave(0)
     store.enemyPieces = []
     store.evaluateWaveOutcome()
-    store.waveCompleteAtMs = 0
-    store.tickWaveAutomation(2000)
+    expect(store.isWaveComplete).toBe(true)
+
+    store.dismissWaveOutcome(0)
     expect(store.currentStage).toBe(2)
+    expect(store.isWavePrep).toBe(true)
+
+    store.tickWaveAutomation(0 + AUTO_ADVANCE_DELAY_MS + 5000)
     expect(store.isWavePrep).toBe(true)
   })
 
@@ -466,19 +490,18 @@ describe('useGameStore', () => {
     store.completeWave(0)
 
     expect(store.showWaveOutcomeModal).toBe(true)
+    expect(store.isWaveComplete).toBe(true)
     expect(store.waveCompleteAtMs).toBeNull()
 
     store.tickWaveAutomation(5000)
-    expect(store.isWavePrep).toBe(true)
+    expect(store.isWaveComplete).toBe(true)
 
     store.dismissWaveOutcome(5000)
-    expect(store.waveCompleteAtMs).toBe(5000)
-
-    store.tickWaveAutomation(5000 + AUTO_ADVANCE_DELAY_MS - 1)
     expect(store.isWavePrep).toBe(true)
+    expect(store.waveCompleteAtMs).toBeNull()
 
-    store.tickWaveAutomation(5000 + AUTO_ADVANCE_DELAY_MS)
-    expect(store.isWaveActive).toBe(true)
+    store.tickWaveAutomation(5000 + AUTO_ADVANCE_DELAY_MS + 5000)
+    expect(store.isWavePrep).toBe(true)
   })
 
   it('stays in prep after continue when auto-start combat is off', () => {
@@ -495,6 +518,23 @@ describe('useGameStore', () => {
     expect(store.waveCompleteAtMs).toBeNull()
     store.tickWaveAutomation(1000 + AUTO_ADVANCE_DELAY_MS + 5000)
     expect(store.isWavePrep).toBe(true)
+  })
+
+  it('advances stage and refreshes combat time when continuing to prep', () => {
+    const store = useGameStore()
+    store.initGame(0)
+    store.startWave(0)
+    store.lastSimulatedMs = 1000
+    store.enemyPieces = []
+    store.completeWave(5000)
+
+    expect(store.isWaveComplete).toBe(true)
+    expect(store.currentStage).toBe(1)
+
+    store.dismissWaveOutcome(8000)
+    expect(store.isWavePrep).toBe(true)
+    expect(store.currentStage).toBe(2)
+    expect(store.lastSimulatedMs).toBe(8000)
   })
 
   it('regens stamina faster under Royal Decree', () => {
@@ -631,6 +671,8 @@ describe('useGameStore', () => {
     expect(store.waveOutcomeReport?.nextStage).toBe(2)
     expect(store.showWaveOutcomeModal).toBe(true)
 
+    store.dismissWaveOutcome(0)
+
     const after = store.playerPieces.find((p) => p.id === pawn!.id)
     expect(after?.superPromotion?.form).toBe('super-queen')
     expect(after?.position.rank).toBeLessThanOrEqual(1)
@@ -754,11 +796,25 @@ describe('useGameStore', () => {
     store.$patch({ currentStage: 10, wavePhase: 'WAVE_ACTIVE' })
     store.enemyPieces = []
     store.evaluateWaveOutcome()
+    store.dismissWaveOutcome()
     expect(store.isWavePrep).toBe(true)
     expect(store.currentStage).toBe(11)
     expect(store.trophies).toBe(1)
     expect(store.bossTrophiesClaimed).toContain(10)
     expect(store.lastTrophyEarned).toBe('Phantom Trophy')
+  })
+
+  it('enterWavePrep restores half of missing HP', () => {
+    const store = useGameStore()
+    store.initGame(0)
+    const king = store.playerPieces.find((p) => p.kind === 'king')!
+    store.$patch({
+      playerPieces: [{ ...king, stats: { ...king.stats, maxHp: 50, hp: 20 } }],
+      wavePhase: 'WAVE_ACTIVE',
+    })
+    store.enterWavePrep(0)
+    const healed = store.playerPieces.find((p) => p.kind === 'king')!
+    expect(healed.stats.hp).toBe(35)
   })
 
   it('pawn leak damages king when enemy pawn reaches back rank', () => {
@@ -777,8 +833,15 @@ describe('useGameStore', () => {
     store.processEnemyPawnLeaks()
     expect(store.lastPawnLeakDamage).toBeGreaterThan(0)
     expect(store.enemyPieces).toHaveLength(0)
+    expect(store.isWaveComplete).toBe(true)
+    const kingAfterLeak = store.playerPieces.find((p) => p.kind === 'king')!
+    expect(kingAfterLeak.stats.hp).toBeLessThan(40)
+    store.dismissWaveOutcome()
     expect(store.isWavePrep).toBe(true)
-    expect(store.playerPieces[0]?.stats.hp).toBe(store.playerPieces[0]?.stats.maxHp)
+    const kingAfterPrep = store.playerPieces.find((p) => p.kind === 'king')!
+    expect(kingAfterPrep.stats.hp).toBeGreaterThan(kingAfterLeak.stats.hp)
+    expect(kingAfterPrep.stats.maxHp).toBeGreaterThanOrEqual(kingAfterLeak.stats.maxHp)
+    expect(kingAfterPrep.stats.hp).toBeLessThanOrEqual(kingAfterPrep.stats.maxHp)
   })
 
   it('emits combat feedback on chip damage', () => {
@@ -809,14 +872,60 @@ describe('useGameStore', () => {
     expect(store.combatFeedbackEvents.length).toBeGreaterThan(0)
   })
 
-  it('tickExhibitions grants gold when exhibitions meta is active', () => {
+  it('showOnboardingTelegraph is true during scripted stage-1 tutorial wave', () => {
     const store = useGameStore()
     store.initGame(0)
-    store.metaUpgrades.simultaneousExhibitions = 1
-    store.exhibitionLastTickMs = 0
-    const granted = store.tickExhibitions(10_000)
-    expect(granted).toBeGreaterThan(0)
-    expect(store.gold).toBeGreaterThan(0)
+    store.$patch({
+      wavePhase: 'WAVE_ACTIVE',
+      currentStage: 1,
+      lifetime: { ...store.lifetime, onboardingTelegraphComplete: false },
+    })
+    expect(store.showOnboardingTelegraph).toBe(true)
+    store.completeOnboardingTelegraph()
+    expect(store.lifetime.onboardingTelegraphComplete).toBe(true)
+    expect(store.showOnboardingTelegraph).toBe(false)
+  })
+
+  it('ensureOnboardingBoardState restores pawn and rook when missing', () => {
+    const store = useGameStore()
+    store.initGame(0)
+    store.$patch({
+      wavePhase: 'WAVE_ACTIVE',
+      currentStage: 1,
+      lifetime: { ...store.lifetime, onboardingTelegraphComplete: false },
+      playerPieces: [createPiece('player-king-0', 'king', 'player', { file: 4, rank: 0 })],
+      enemyPieces: [],
+    })
+
+    store.ensureOnboardingBoardState(0)
+
+    expect(store.playerPieces.some((p) => p.id === 'onboarding-player-pawn')).toBe(true)
+    expect(store.enemyPieces.some((p) => p.id === 'onboarding-enemy-rook')).toBe(true)
+  })
+
+  it('armOnboardingMove re-arms pawn turn after hydrate clears manualPendingPieceId', () => {
+    const store = useGameStore()
+    store.initGame(0)
+    store.$patch({
+      wavePhase: 'WAVE_ACTIVE',
+      currentStage: 1,
+      lifetime: { ...store.lifetime, onboardingTelegraphComplete: false },
+      autoMode: false,
+      playerPieces: [
+        createPiece('player-king-0', 'king', 'player', { file: 4, rank: 0 }),
+        createPiece('onboarding-player-pawn', 'pawn', 'player', { file: 2, rank: 1 }),
+      ],
+      enemyPieces: [
+        createPiece('onboarding-enemy-rook', 'rook', 'enemy', { file: 2, rank: 6 }),
+      ],
+    })
+    store.manualPendingPieceId = null
+    store.combatFocus = 'strike'
+
+    expect(store.armOnboardingMove(0)).toBe(true)
+    expect(store.manualPendingPieceId).toBe('onboarding-player-pawn')
+    expect(store.isMoveFocus).toBe(true)
+    expect(store.setCombatFocus('move')).toBe(true)
   })
 
   it('applies Grandmaster Phase III modifiers via store getters and combat tick', () => {

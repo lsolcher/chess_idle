@@ -1,12 +1,20 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { useGameStore } from '@/store'
+import { getPieceVictoryGlowClasses } from '@/engine/aestheticProgression'
+import ChessPieceRenderer from '@/components/ChessPieceRenderer.vue'
 import type { PieceKind, PieceSide } from '@/types/game'
 
 const store = useGameStore()
 
 const queue = computed(() => store.combatTurnOrder)
 const activeId = computed(() => store.activeTurnPieceId)
+
+function playerVictoryGlowClass(kind: PieceKind): string {
+  const tier = store.aestheticProgress.victoryGlowTier
+  if (tier <= 0) return ''
+  return getPieceVictoryGlowClasses(tier, kind)
+}
 
 const kindLabel: Record<PieceKind, string> = {
   king: 'King',
@@ -15,28 +23,6 @@ const kindLabel: Record<PieceKind, string> = {
   bishop: 'Bishop',
   rook: 'Rook',
   queen: 'Queen',
-}
-
-const playerGlyph: Record<PieceKind, string> = {
-  king: '♔',
-  pawn: '♙',
-  knight: '♘',
-  bishop: '♗',
-  rook: '♖',
-  queen: '♛',
-}
-
-const enemyGlyph: Record<PieceKind, string> = {
-  king: '♚',
-  pawn: '♟',
-  knight: '♞',
-  bishop: '♝',
-  rook: '♜',
-  queen: '♛',
-}
-
-function glyph(kind: PieceKind, side: PieceSide): string {
-  return side === 'player' ? playerGlyph[kind] : enemyGlyph[kind]
 }
 
 function ringStyle(progress: number, isActive: boolean, side: PieceSide): Record<string, string> {
@@ -111,12 +97,15 @@ function ringStyle(progress: number, isActive: boolean, side: PieceSide): Record
           class="relative grid h-9 w-9 shrink-0 place-items-center rounded-full p-0.5"
           :style="ringStyle(entry.progress, entry.id === activeId, entry.side)"
         >
-          <span
-            class="flex h-full w-full items-center justify-center rounded-full bg-slate-900 text-base"
-            :class="entry.side === 'player' ? 'text-sky-200' : 'text-rose-300'"
-          >
-            {{ glyph(entry.kind, entry.side) }}
-          </span>
+          <ChessPieceRenderer
+            :kind="entry.kind"
+            :side="entry.side"
+            class="chess-piece-victory-wrap rounded-full bg-slate-900 text-base"
+            :class="[
+              entry.side === 'player' ? 'text-sky-200' : 'text-rose-300',
+              entry.side === 'player' ? playerVictoryGlowClass(entry.kind) : '',
+            ]"
+          />
         </div>
         <div class="min-w-0 flex-1">
           <p class="text-sm font-medium text-slate-200">

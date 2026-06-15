@@ -21,6 +21,8 @@ import type { ChessPiece } from '@/types/game'
 const store = useGameStore()
 const audio = useAudioStore()
 
+const suite = computed(() => store.strategySuiteClasses)
+
 const deployed = ref<ChessPiece[]>(initialArenaDeployedFromRoster(store.unlockedPieces))
 const selectedRosterId = ref<string | null>(null)
 const saveStatus = ref('')
@@ -120,7 +122,7 @@ watch(
 <template>
   <div class="space-y-4 px-3 py-4 sm:px-4">
     <header
-      class="rounded-xl border border-cyan-500/30 bg-gradient-to-br from-cyan-950/70 to-slate-900/90 p-4"
+      class="rounded-xl border border-cyan-500/40 bg-gradient-to-br from-cyan-950/80 via-slate-900/90 to-slate-950 p-4 shadow-lg shadow-cyan-950/20 ring-1 ring-cyan-400/10"
     >
       <div class="flex flex-wrap items-center justify-between gap-3">
         <div>
@@ -166,8 +168,8 @@ watch(
         <ChessBoard :arena="arenaBinding" @arena-cell-click="onArenaCellClick" />
       </div>
 
-      <aside class="rounded-xl border border-slate-800 bg-slate-900/60 p-4">
-        <h3 class="text-sm font-semibold uppercase tracking-wide text-slate-400">
+      <aside class="rounded-xl p-4" :class="suite.panel">
+        <h3 :class="suite.panelHeader">
           {{ t('arenaLoadout.rosterTitle') }}
         </h3>
         <p class="mb-3 text-xs text-slate-500">{{ t('arenaLoadout.rosterHint') }}</p>
@@ -179,14 +181,15 @@ watch(
           <li
             v-for="piece in roster"
             :key="piece.id"
-            class="flex flex-col gap-2 rounded-lg border px-3 py-2 sm:flex-row sm:items-center sm:justify-between"
-            :class="
+            class="flex flex-col gap-2 rounded-lg px-3 py-2 sm:flex-row sm:items-center sm:justify-between"
+            :class="[
+              suite.rosterItem,
               isDeployed(piece.id)
-                ? 'border-emerald-500/30 bg-emerald-500/5'
+                ? 'border-emerald-500/40 bg-emerald-500/10 ring-1 ring-emerald-400/20'
                 : selectedRosterId === piece.id
-                  ? 'border-cyan-500/50 bg-cyan-500/10'
-                  : 'border-slate-800 bg-slate-900/40'
-            "
+                  ? 'border-cyan-500/50 bg-cyan-500/15 ring-1 ring-cyan-400/30'
+                  : '',
+            ]"
           >
             <div class="min-w-0">
               <span class="text-sm font-medium capitalize text-slate-100">
@@ -204,10 +207,10 @@ watch(
               <button
                 v-if="!isDeployed(piece.id)"
                 type="button"
-                class="rounded-lg px-3 py-1.5 text-xs font-semibold transition"
+                class="btn-juice rounded-lg px-3 py-1.5 text-xs font-semibold"
                 :class="
                   selectedRosterId === piece.id
-                    ? 'bg-cyan-600 text-white'
+                    ? 'bg-cyan-600 text-white shadow-md shadow-cyan-900/40'
                     : 'bg-slate-700 text-slate-100 hover:bg-slate-600'
                 "
                 @click="selectForDeploy(piece.id)"
@@ -217,7 +220,7 @@ watch(
               <button
                 v-if="!isDeployed(piece.id)"
                 type="button"
-                class="rounded-lg bg-slate-800 px-3 py-1.5 text-xs font-semibold text-slate-300 hover:bg-slate-700"
+                class="btn-juice rounded-lg bg-slate-800 px-3 py-1.5 text-xs font-semibold text-slate-300 hover:bg-slate-700"
                 @click="deployRosterPiece(piece)"
               >
                 {{ t('arenaLoadout.autoPlace') }}
@@ -225,7 +228,7 @@ watch(
               <button
                 v-else
                 type="button"
-                class="rounded-lg bg-rose-900/60 px-3 py-1.5 text-xs font-semibold text-rose-200 hover:bg-rose-800/80"
+                class="btn-juice rounded-lg bg-rose-900/60 px-3 py-1.5 text-xs font-semibold text-rose-200 hover:bg-rose-800/80"
                 @click="removeFromBoard(piece.id)"
               >
                 {{ t('arenaLoadout.remove') }}
@@ -237,10 +240,10 @@ watch(
         <div class="mt-4 border-t border-slate-800 pt-4">
           <button
             type="button"
-            class="w-full rounded-lg px-4 py-2.5 text-sm font-semibold transition active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-40"
+            class="btn-juice w-full rounded-lg px-4 py-2.5 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-40"
             :class="
               canSave
-                ? 'bg-cyan-600 text-white hover:bg-cyan-500'
+                ? 'bg-gradient-to-r from-cyan-600 to-sky-600 text-white shadow-lg shadow-cyan-900/30 hover:from-cyan-500 hover:to-sky-500'
                 : 'bg-slate-800 text-slate-500'
             "
             :disabled="!canSave"

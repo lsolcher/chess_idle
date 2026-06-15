@@ -32,8 +32,10 @@ export interface DojoMoveCandidate {
 
 const DEFAULT_PERSONALITY: AutoAiPersonality = 'defensive'
 
+import { DOJO_HARD_LOOKAHEAD_PLIES } from '@/engine/balanceConstants'
+
 /** Base minimax plies for Hard (AI move + opponent reply, then evaluate). */
-export const HARD_LOOKAHEAD_PLIES = 2
+export const HARD_LOOKAHEAD_PLIES = DOJO_HARD_LOOKAHEAD_PLIES
 
 export function opponentSide(side: PieceSide): PieceSide {
   return side === 'player' ? 'enemy' : 'player'

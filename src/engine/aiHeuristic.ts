@@ -218,6 +218,61 @@ function nearestEnemyDistance(from: BoardMove['from'], ctx: AiScoreContext): num
   return Math.min(...enemies.map((e) => manhattanDistance(from, e.position)))
 }
 
+/** Friendly pawn with an enemy pawn directly ahead on the same file (frontline screen). */
+export function findHeadOnPawnScreen(
+  allPieces: ChessPiece[],
+  side: ChessPiece['side'] = 'player',
+): { friendly: ChessPiece; enemy: ChessPiece } | null {
+  const forward = side === 'player' ? 1 : -1
+  for (const friendly of allPieces) {
+    if (friendly.side !== side || friendly.kind !== 'pawn' || friendly.stats.hp <= 0) continue
+    const enemy = allPieces.find(
+      (piece) =>
+        piece.side !== side &&
+        piece.kind === 'pawn' &&
+        piece.stats.hp > 0 &&
+        piece.position.file === friendly.position.file &&
+        piece.position.rank === friendly.position.rank + forward,
+    )
+    if (enemy) return { friendly, enemy }
+  }
+  return null
+}
+
+function scoreKingPawnScreenBreak(move: BoardMove, ctx: AiScoreContext): number {
+  if (ctx.movingPiece.kind !== 'king' || ctx.movingPiece.side !== 'player') return 0
+
+  const screen = findHeadOnPawnScreen(ctx.allPieces, 'player')
+  if (!screen) return 0
+
+  const { enemy } = screen
+  let bonus = 0
+
+  if (move.isCapture && move.capturedPieceId === enemy.id) {
+    return 8.0
+  }
+
+  const distBefore = manhattanDistance(move.from, enemy.position)
+  const distAfter = manhattanDistance(move.to, enemy.position)
+  if (distAfter < distBefore) {
+    bonus += 4.5
+  }
+
+  if (isPawnApproachSquare(move.to, enemy, 'player')) {
+    bonus += 5.5
+  }
+
+  if (setsUpPawnCapture(move, ctx)) {
+    bonus += 5.0
+  }
+
+  if (move.to.rank > move.from.rank) {
+    bonus += 2.0
+  }
+
+  return bonus
+}
+
 /**
  * Square one rank toward the player King on the same file as an enemy pawn.
  * Pawns only attack diagonally, so this file is decree-safe for approach (GDD §1.2).
@@ -422,6 +477,12 @@ export function scoreMove(move: BoardMove, ctx: AiScoreContext): number {
   const soloDecreeKing = isSoloDecreeKing(ctx)
   let waiveIntoAttack = move.isCapture
 
+  const kingScreenBonus = scoreKingPawnScreenBreak(move, ctx)
+  score += kingScreenBonus
+  if (kingScreenBonus > 0) {
+    waiveIntoAttack = true
+  }
+
   if (soloDecreeKing) {
     const distBefore = nearestEnemyDistance(move.from, ctx)
     const distAfter = nearestEnemyDistance(move.to, ctx)
@@ -465,6 +526,8 @@ export function scoreMove(move: BoardMove, ctx: AiScoreContext): number {
     } else {
       score += scoreEngagementBonus(move, ctx) * 0.35
     }
+  } else {
+    score += scoreEngagementBonus(move, ctx) * 0.4
   }
 
   const accuracy = ctx.aiScoreMult && ctx.aiScoreMult > 0 ? ctx.aiScoreMult : 1

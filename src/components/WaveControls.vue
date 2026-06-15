@@ -231,7 +231,7 @@ function onPurchaseAutoAdvance(): void {
       </label>
 
       <span
-        v-if="store.isWavePrep && store.waveCompleteAtMs && store.autoAdvanceWavesEnabled"
+        v-if="store.isWavePrep && store.waveCompleteAtMs && store.autoAdvanceWavesEnabled && store.autoStartWavesEnabled"
         class="text-emerald-400"
       >
         Auto-starting next wave…

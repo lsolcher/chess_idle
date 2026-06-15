@@ -3,8 +3,10 @@ import { applySuperPromotion } from '@/engine/promotion'
 import { createPiece } from '@/types/game'
 import {
   getKingFailReason,
+  healPlayerPiecesForPrep,
   isWaveFailed,
   persistArmyPromotionsBetweenStages,
+  PREP_MISSING_HP_RECOVERY_BASE,
   relocateArmyToPrepRanks,
   restorePlayerKingForPrep,
 } from './waveState'
@@ -32,6 +34,41 @@ describe('waveState king fail', () => {
     expect(king.position).toEqual({ file: 4, rank: 0 })
     expect(king.stats.hp).toBe(king.stats.maxHp)
     expect(restored).toHaveLength(2)
+  })
+
+  it('keeps wounded King HP when returning to deploy rank', () => {
+    const king = createPiece('k', 'king', 'player', { file: 2, rank: 3 })
+    const wounded = {
+      ...king,
+      stats: { ...king.stats, maxHp: 50, hp: 20 },
+    }
+    const restored = restorePlayerKingForPrep([wounded], 0, 1)
+    const next = restored.find((p) => p.kind === 'king')!
+    expect(next.position).toEqual({ file: 4, rank: 0 })
+    expect(next.stats.hp).toBe(20)
+  })
+})
+
+describe('waveState prep heal', () => {
+  it('restores 50% of missing HP by default', () => {
+    const pawn = createPiece('p1', 'pawn', 'player', { file: 0, rank: 1 })
+    const wounded = {
+      ...pawn,
+      stats: { ...pawn.stats, maxHp: 100, hp: 40 },
+    }
+    const [healed] = healPlayerPiecesForPrep([wounded])
+    expect(PREP_MISSING_HP_RECOVERY_BASE).toBe(0.5)
+    expect(healed?.stats.hp).toBe(70)
+  })
+
+  it('can fully heal when recovery fraction is 1', () => {
+    const pawn = createPiece('p1', 'pawn', 'player', { file: 0, rank: 1 })
+    const wounded = {
+      ...pawn,
+      stats: { ...pawn.stats, maxHp: 100, hp: 40 },
+    }
+    const [healed] = healPlayerPiecesForPrep([wounded], { missingHpRecoveryFraction: 1 })
+    expect(healed?.stats.hp).toBe(100)
   })
 })
 

@@ -22,7 +22,7 @@ describe('townBuildings', () => {
   it('scales barracks AP bonus by level', () => {
     const buildings = createDefaultTownBuildings()
     buildings.barracks.level = 5
-    expect(getTownBonuses(buildings).apMult).toBeCloseTo(1.1, 5)
+    expect(getTownBonuses(buildings).apMult).toBeCloseTo(1.05, 5)
   })
 
   it('merges town bonuses into meta modifiers', () => {

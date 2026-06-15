@@ -4,8 +4,13 @@
  */
 import { defineStore } from 'pinia'
 import { getUnlockedMusicLayers, type MusicLayerId } from '@/engine/musicLayers'
+import type { CombatFeedbackEvent } from '@/engine/combatFeedback'
 import {
+  GrandmasterTensionDrone,
+  pieceKindToPitchTier,
+  playPitchMappedCombatSfx,
   playProceduralSfx,
+  playPrestigeChime,
   ProceduralMusicLoop,
   resolveMusicMode,
   sfxFromFeedbackKind,
@@ -28,6 +33,8 @@ let masterGain: GainNode | null = null
 let sfxBus: GainNode | null = null
 let musicBus: GainNode | null = null
 const musicLoop = new ProceduralMusicLoop()
+const grandmasterDrone = new GrandmasterTensionDrone()
+let visibilityHooksInstalled = false
 
 function createContext(): AudioContext | null {
   if (typeof window === 'undefined') return null
@@ -47,8 +54,24 @@ function ensureGraph(): AudioContext | null {
     musicBus.connect(masterGain)
     masterGain.connect(sharedContext.destination)
     musicLoop.attach(sharedContext, musicBus)
+    grandmasterDrone.attach(sharedContext, sfxBus)
   }
   return sharedContext
+}
+
+function installVisibilityHooks(store: { suspendForBackground: () => void; resumeFromBackground: () => Promise<void> }): void {
+  if (visibilityHooksInstalled || typeof document === 'undefined') return
+  visibilityHooksInstalled = true
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) {
+      store.suspendForBackground()
+    } else {
+      void store.resumeFromBackground()
+    }
+  })
+  window.addEventListener('blur', () => {
+    if (document.hidden) store.suspendForBackground()
+  })
 }
 
 export const useAudioStore = defineStore('audio', {
@@ -76,6 +99,7 @@ export const useAudioStore = defineStore('audio', {
     async unlockFromGesture(): Promise<void> {
       const ctx = ensureGraph()
       if (!ctx) return
+      installVisibilityHooks(this)
       if (ctx.state === 'suspended') {
         await ctx.resume()
       }
@@ -96,6 +120,7 @@ export const useAudioStore = defineStore('audio', {
       this.applyBusLevels()
       if (muted) {
         musicLoop.stop()
+        grandmasterDrone.stop()
       }
     },
 
@@ -116,9 +141,87 @@ export const useAudioStore = defineStore('audio', {
       playProceduralSfx(ctx, sfxBus, id, this.sfxVolume)
     },
 
+    playMetaPurchaseChime(): void {
+      this.playSfx('metaPurchase')
+    },
+
+    playSupporterPurchaseChime(): void {
+      this.playSfx('supporterPurchase')
+    },
+
+    playPrestigeChime(): void {
+      if (!this.unlocked || this.muted) return
+      const ctx = ensureGraph()
+      if (!ctx || !sfxBus) return
+      playPrestigeChime(ctx, sfxBus, this.sfxVolume)
+    },
+
     playFeedback(kind: string): void {
       const id = sfxFromFeedbackKind(kind)
       if (id) this.playSfx(id)
+    },
+
+    /**
+     * Pitch-mapped combat feedback — tier from attacker piece kind when present.
+     */
+    playCombatFeedbackEvents(events: CombatFeedbackEvent[]): void {
+      if (!this.unlocked || this.muted || events.length === 0) return
+      const ctx = ensureGraph()
+      if (!ctx || !sfxBus) return
+
+      for (const event of events) {
+        const mapped = sfxFromFeedbackKind(event.kind)
+        if (!mapped) continue
+
+        if (
+          event.attackerKind &&
+          (event.kind === 'chip' || event.kind === 'clash' || event.kind === 'capture')
+        ) {
+          const tier = pieceKindToPitchTier(event.attackerKind)
+          const pitchKind =
+            event.kind === 'capture' ? 'capture' : event.kind === 'clash' ? 'clash' : 'chip'
+          playPitchMappedCombatSfx(ctx, sfxBus, pitchKind, tier, this.sfxVolume)
+          continue
+        }
+
+        playProceduralSfx(ctx, sfxBus, mapped, this.sfxVolume, {
+          combatVoice: mapped === 'chip' || mapped === 'capture',
+        })
+      }
+    },
+
+    /**
+     * Grandmaster Phase III tension layer — subtle dissonant drone until boss defeat.
+     */
+    syncGrandmasterTension(active: boolean): void {
+      if (!this.unlocked || this.muted || !active) {
+        grandmasterDrone.stop()
+        return
+      }
+      ensureGraph()
+      if (!grandmasterDrone.isRunning()) {
+        grandmasterDrone.start(this.sfxVolume * 0.85)
+      }
+    },
+
+    /** Suspends Web Audio and procedural timers when the tab is backgrounded. */
+    suspendForBackground(): void {
+      musicLoop.stop()
+      grandmasterDrone.stop()
+      if (sharedContext && sharedContext.state === 'running') {
+        void sharedContext.suspend()
+      }
+    },
+
+    /** Resumes context after focus return; music re-syncs via `useGameAudio` watch. */
+    async resumeFromBackground(): Promise<void> {
+      if (!this.unlocked || this.muted) return
+      const ctx = ensureGraph()
+      if (!ctx) return
+      if (ctx.state === 'suspended') {
+        await ctx.resume()
+      }
+      this.applyBusLevels()
     },
 
     /**
@@ -127,6 +230,7 @@ export const useAudioStore = defineStore('audio', {
     syncMusicMode(options: {
       wavePhase: string
       isBossStage: boolean
+      currentStage?: number
       maxStageEver?: number
       totalPrestiges?: number
       musicLayersEnabled?: boolean
@@ -139,6 +243,7 @@ export const useAudioStore = defineStore('audio', {
       this.applyBusLevels()
 
       const mode = resolveMusicMode(options.wavePhase, options.isBossStage)
+      const mixStage = options.currentStage ?? options.maxStageEver ?? 1
 
       if (mode === 'off') {
         musicLoop.stop()
@@ -150,12 +255,14 @@ export const useAudioStore = defineStore('audio', {
               options.totalPrestiges ?? 0,
             )
           : ['base']
+        musicLoop.setMixContext(mixStage, options.totalPrestiges ?? 0)
         musicLoop.start(mode, layers)
       }
     },
 
     teardown(): void {
       musicLoop.stop()
+      grandmasterDrone.stop()
       if (sharedContext) {
         void sharedContext.close()
       }

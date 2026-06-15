@@ -23,7 +23,6 @@ export function useCombatLoop(): { start: () => void; stop: () => void } {
 
 
   const loop = (): void => {
-    store.tickExhibitions()
     town.tickTown()
     store.tickWaveAutomation()
     if (store.isWaveActive && store.isCombatLoopRunning) {

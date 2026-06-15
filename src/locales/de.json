@@ -70,6 +70,15 @@
     "victory": "Sieg! +{points} Skillpunkte.",
     "defeat": "Dein König ist gefallen. Weiter trainieren!",
     "stalemate": "Remis — kein Zug möglich. Zurücksetzen zum Weiterspielen.",
+    "modulesTitle": "Wellen-Gegenmodule",
+    "modulesHint": "Sieg mit gewähltem Modul → +15 % AP gegen diese Wellenformation.",
+    "moduleComplete": "Abgeschlossen",
+    "modules": {
+      "knightDefense": "Springer-Abwehr",
+      "pawnWallBreak": "Bauernmauer brechen",
+      "bishopDiagonal": "Diagonal-Gegenstoß",
+      "rookSiege": "Turm-Belagerung"
+    },
     "upgrades": {
       "deepThought": {
         "label": "Tiefes Denken",
@@ -134,5 +143,102 @@
     "checkpoint": "Checkpoint: Welle {stage}",
     "failSoft": "Neuer Versuch bei {pct}% Gegner-HP (Fail ×{count})",
     "failRewind": "Zurück zum Meilenstein Welle {stage}"
+  },
+  "victoryGlow": {
+    "banner": "Armee-Aura: {label} · {waves} Siege · Hintergrund: {backdrop}",
+    "backdropWorn": "matt",
+    "backdropRising": "aufsteigend",
+    "backdropTriumphant": "triumphal",
+    "warm": "warmes Leuchten",
+    "bright": "helles Leuchten",
+    "shimmer": "Schimmer",
+    "radiant": "strahlend",
+    "blazing": "lodernd",
+    "champion": "Champion-Funkeln"
+  },
+  "chessBoard": {
+    "title": "Schachbrett",
+    "arenaTitle": "Arena-Vorschau",
+    "dojoTitle": "Dojo-Brett",
+    "skipTurn": "Zug überspringen",
+    "strike": "Schlag",
+    "move": "Zug",
+    "mode": "Modus: {mode}",
+    "modeAuto": "AUTO",
+    "modeManual": "MANUELL",
+    "prepReposition": "Violettes Feld antippen zum Umstellen",
+    "prepFormation": "Figuren antippen für Formation (Ränge 1–2)",
+    "strikeArmedStamina": "Schlag bereit — Gegner antippen ({current}/{max} Ausdauer)",
+    "strikeNeedStamina": "Schlag bereit — mehr Ausdauer nötig",
+    "strikeRechargingResume": "Schlag lädt, wenn der Kampf weitergeht",
+    "strikeRechargingSec": "Schlag lädt ({sec}s)",
+    "noLegalMoves": "Keine legalen Züge — „Zug überspringen“ unten",
+    "moveArmed": "Zug bereit — hellblaues Feld oder schlagbare Figur",
+    "clockPaused": "Uhr pausiert bis du ziehst",
+    "yourTurnDual": "Du bist dran — Zug oder Schlag gegen Gegner",
+    "enemyTurn": "Gegner am Zug…",
+    "strikeBetweenTurns": "Schlag bereit — Gegner zwischen den Zügen antippen",
+    "waitingInitiative": "Warte auf nächsten Initiative-Tick…",
+    "autoStrikeHint": "Auto-Züge — Schlag für Tap-Schaden bereit",
+    "promotionBlock": "Schattiert = Promotionsblock"
+  },
+  "onboarding": {
+    "title": "Bedrohung lesen",
+    "body": "Der gegnerische Turm will angreifen! Blockiere mit dem Bauern für ein Tempo-Bonus.",
+    "intentHint": "Achte auf das Intent-Band — telegraphierte Gegner sind rot markiert.",
+    "telegraphedRook": "Nächste Bedrohung: Gegner-Turm ({eta})",
+    "actionHint": "„Zug“ aktivieren, dann den Bauern auf das Unterbrechungsfeld setzen.",
+    "armMove": "Zug aktivieren",
+    "armedHint": "Zug aktiv — tippe auf das markierte Feld (●) mit deinem Bauern, um den Turm zu blockieren."
+  },
+  "intentRibbon": {
+    "title": "Bedrohungs-Timeline",
+    "now": "Jetzt",
+    "tempoHint": "Manuell telegrafierte Figur schlagen oder blockieren, bevor sie zieht → Tempo-Bonus (−5 % Verzögerung beim nächsten Zug).",
+    "countered": "Dojo-Gegenmodul aktiv",
+    "playerTurn": "Dein {kind}",
+    "enemy": {
+      "strike": "Gegner-Angriff",
+      "advance": "Gegner-Vorstoß",
+      "capture_setup": "Gegner-Aufbau",
+      "boss": "Boss-Aktion"
+    }
+  },
+  "wavePattern": {
+    "procedural": "Standardwelle",
+    "knight_rush": "Springer-Sturm",
+    "pawn_wall": "Bauernmauer",
+    "bishop_diagonal": "Diagonal-Belagerung",
+    "rook_siege": "Turm-Belagerung"
+  },
+  "combatFooter": {
+    "adaptiveAi": "Adaptives KI · {profile}"
+  },
+  "devMode": {
+    "title": "Entwicklermodus",
+    "hint": "Strg+Umschalt+D zum Ein-/Ausblenden. Cheats betreffen nur diesen Spielstand.",
+    "prodWarning": "Produktions-Build — Test-Spielstand verwenden.",
+    "close": "Dev-Panel schließen",
+    "status": "Stufe {stage} · {phase}",
+    "godMode": "Gottmodus",
+    "godModeOn": "An — du besiegst Gegner sofort; Gegner können dich nicht verletzen",
+    "godModeOff": "Aus",
+    "jumpStage": "Zu Stufe springen",
+    "jump": "Los",
+    "disable": "Entwicklermodus deaktivieren",
+    "cheats": {
+      "addGold10k": "+10k Gold",
+      "addGold100k": "+100k Gold",
+      "addElo100": "+100 Elo-Splitter",
+      "healArmy": "Armee heilen",
+      "refillStamina": "Ausdauer auffüllen",
+      "maxUpgrades": "Max. Figuren-Upgrades",
+      "maxClickPower": "Max. Klickkraft",
+      "unlockRoster": "Volles Roster freischalten",
+      "advanceStage": "Stufe +1 (Vorbereitung)",
+      "completeWave": "Welle leeren",
+      "enterPrep": "Vorbereitung erzwingen",
+      "startWave": "Welle starten"
+    }
   }
 }

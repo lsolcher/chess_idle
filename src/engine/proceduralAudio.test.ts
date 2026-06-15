@@ -1,9 +1,13 @@
 import { describe, expect, it } from 'vitest'
 import {
+  COMBAT_PITCH_PROFILE,
+  MUSIC_MODE_CROSSFADE_SEC,
+  pieceKindToPitchTier,
   resolveMusicMode,
   SFX_PRESETS,
   sfxFromFeedbackKind,
 } from './proceduralAudio'
+import { computeDynamicLayerGain } from './musicLayers'
 
 describe('proceduralAudio', () => {
   it('defines positive-duration presets for every SFX id', () => {
@@ -29,5 +33,25 @@ describe('proceduralAudio', () => {
     expect(resolveMusicMode('WAVE_ACTIVE', true)).toBe('boss')
     expect(resolveMusicMode('WAVE_COMPLETE', true)).toBe('boss')
     expect(resolveMusicMode('UNKNOWN', true)).toBe('off')
+  })
+
+  it('uses a 2-second boss vs ambient crossfade constant', () => {
+    expect(MUSIC_MODE_CROSSFADE_SEC).toBe(2)
+  })
+
+  it('maps piece tiers for pitch (pawn bright, rook/queen heavy)', () => {
+    expect(pieceKindToPitchTier('pawn')).toBe('light')
+    expect(pieceKindToPitchTier('rook')).toBe('heavy')
+    expect(pieceKindToPitchTier('queen')).toBe('heavy')
+    expect(COMBAT_PITCH_PROFILE.light.chip).toBeGreaterThan(COMBAT_PITCH_PROFILE.heavy.chip)
+  })
+})
+
+describe('musicLayers dynamic mix', () => {
+  it('boosts early layers at low stage and choral at high stage', () => {
+    const earlyArp = computeDynamicLayerGain('arpeggio', 5, 0)
+    const lateChoral = computeDynamicLayerGain('choral', 80, 2)
+    expect(earlyArp).toBeGreaterThan(1)
+    expect(lateChoral).toBeGreaterThan(earlyArp)
   })
 })

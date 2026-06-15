@@ -8,9 +8,9 @@ import {
 } from '@/version'
 
 describe('version', () => {
-  it('keeps app and save schema aligned', () => {
-    expect(GAME_SCHEMA_VERSION).toBe(APP_VERSION)
-    expect(APP_VERSION).toBe('0.3.0')
+  it('bumps client release while save schema stays on 0.3.0 until migration', () => {
+    expect(APP_VERSION).toBe('0.4.0')
+    expect(GAME_SCHEMA_VERSION).toBe('0.3.0')
   })
 
   it('uses v0.3 storage keys', () => {

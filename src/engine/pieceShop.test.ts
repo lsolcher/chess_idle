@@ -23,15 +23,53 @@ describe('pieceShop', () => {
     expect(calculatePieceRecruitCost('queen')).toBe(1600)
   })
 
-  it('unlocks pawn slot 2 at stage 6 and knight at 10', () => {
-    expect(resolveUnlockedSlotsFromMilestones(5).pawn).toBe(1)
-    expect(resolveUnlockedSlotsFromMilestones(6).pawn).toBe(2)
-    expect(resolveUnlockedSlotsFromMilestones(10).knight).toBe(true)
+  it('unlocks pawn slot 2 at stage 4 and knight at 8', () => {
+    expect(resolveUnlockedSlotsFromMilestones(3).pawn).toBe(1)
+    expect(resolveUnlockedSlotsFromMilestones(4).pawn).toBe(2)
+    expect(resolveUnlockedSlotsFromMilestones(17).pawn).toBe(3)
+    expect(resolveUnlockedSlotsFromMilestones(23).pawn).toBe(4)
+    expect(resolveUnlockedSlotsFromMilestones(8).knight).toBe(1)
   })
 
-  it('applies stage 40 deploy slot milestone', () => {
-    expect(applyDeploySlotMilestones(40, 2)).toBe(6)
-    expect(applyDeploySlotMilestones(10, 5)).toBe(5)
+  it('applies deploy slot milestones within roster cap', () => {
+    const unlocked38 = resolveUnlockedSlotsFromMilestones(38)
+    expect(applyDeploySlotMilestones(38, 2, unlocked38)).toBe(6)
+    const unlocked8 = resolveUnlockedSlotsFromMilestones(8)
+    expect(applyDeploySlotMilestones(8, 2, unlocked8)).toBe(4)
+  })
+
+  it('hides board slot offer at roster deploy cap', () => {
+    const state = createInitialGameState(0)
+    const unlocked = resolveUnlockedSlotsFromMilestones(5)
+    const offers = buildPieceShopCatalog({
+      gold: 10_000,
+      maxStageReached: 5,
+      currentStage: 5,
+      wavePhase: 'WAVE_PREP',
+      playerPieces: state.playerPieces,
+      enemyPieces: [],
+      unlockedSlots: unlocked,
+      deploySlots: 3,
+    })
+    expect(offers.find((o) => o.kind === 'boardSlot')).toBeUndefined()
+  })
+
+  it('prompts pawn recruits before extra board slots', () => {
+    const king = createPiece('k', 'king', 'player', { file: 4, rank: 0 })
+    const unlocked = resolveUnlockedSlotsFromMilestones(4)
+    const offers = buildPieceShopCatalog({
+      gold: 10_000,
+      maxStageReached: 4,
+      currentStage: 4,
+      wavePhase: 'WAVE_PREP',
+      playerPieces: [king],
+      enemyPieces: [],
+      unlockedSlots: unlocked,
+      deploySlots: 2,
+    })
+    const slot = offers.find((o) => o.kind === 'boardSlot')
+    expect(slot?.purchasable).toBe(false)
+    expect(slot?.lockedReason).toContain('Recruit pawns first')
   })
 
   it('finds pawn deploy square on rank 1', () => {
@@ -40,7 +78,7 @@ describe('pieceShop', () => {
     expect(sq).toEqual({ file: 0, rank: 1 })
   })
 
-  it('catalog marks knight locked before stage 10', () => {
+  it('catalog marks knight locked before stage 8', () => {
     const state = createInitialGameState(0)
     const offers = buildPieceShopCatalog({
       gold: 10_000,
@@ -54,7 +92,7 @@ describe('pieceShop', () => {
     })
     const knight = offers.find((o) => o.kind === 'knight')
     expect(knight?.purchasable).toBe(false)
-    expect(knight?.lockedReason).toContain('Stage 10')
+    expect(knight?.lockedReason).toContain('Stage 8')
   })
 
   it('enforces board slot cap', () => {

@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { useGameStore } from '@/store'
+import { getPieceVictoryGlowClasses } from '@/engine/aestheticProgression'
+import ChessPieceRenderer from '@/components/ChessPieceRenderer.vue'
 import type { ChessPiece, PieceKind } from '@/types/game'
 
 const store = useGameStore()
@@ -15,15 +17,6 @@ const kindLabel: Record<PieceKind, string> = {
   bishop: 'Bishop',
   rook: 'Rook',
   queen: 'Queen',
-}
-
-const kindGlyph: Record<PieceKind, string> = {
-  king: '♔',
-  pawn: '♙',
-  knight: '♘',
-  bishop: '♗',
-  rook: '♖',
-  queen: '♛',
 }
 
 function ringStyle(piece: ChessPiece): Record<string, string> {
@@ -60,11 +53,11 @@ function ringStyle(piece: ChessPiece): Record<string, string> {
           class="relative grid h-10 w-10 shrink-0 place-items-center rounded-full p-0.5"
           :style="ringStyle(piece)"
         >
-          <span
-            class="flex h-full w-full items-center justify-center rounded-full bg-slate-900 text-lg"
-          >
-            {{ kindGlyph[piece.kind] }}
-          </span>
+          <ChessPieceRenderer
+            :piece="piece"
+            class="chess-piece-victory-wrap rounded-full bg-slate-900 text-lg"
+            :class="getPieceVictoryGlowClasses(store.aestheticProgress.victoryGlowTier, piece.kind)"
+          />
         </div>
         <div class="min-w-0 flex-1">
           <p class="text-sm font-medium">{{ kindLabel[piece.kind] }}</p>

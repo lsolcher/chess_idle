@@ -17,6 +17,9 @@ import {
 import type { EquippedCosmetics } from '@/engine/cosmetics'
 import type { AestheticPreferences } from '@/types/game'
 
+/** Minimum max stage before manual prestige unlocks (GDD §2.4). */
+export const PRESTIGE_UNLOCK_STAGE = 20
+
 export interface PrestigeRetainBundle {
   eloShards: number
   trophies: number

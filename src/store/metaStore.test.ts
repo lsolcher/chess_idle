@@ -10,8 +10,8 @@ describe('metaStore dojo', () => {
   it('grants skill points on dojoVictory', () => {
     const meta = useMetaStore()
     const granted = meta.dojoVictory('hard')
-    expect(granted).toBe(3)
-    expect(meta.skillPoints).toBe(3)
+    expect(granted).toBe(5)
+    expect(meta.skillPoints).toBe(5)
     expect(meta.dojoVictories.hard).toBe(1)
   })
 
@@ -20,7 +20,7 @@ describe('metaStore dojo', () => {
     meta.skillPoints = 10
     expect(meta.purchaseDojoUpgrade('deepThought')).toBe(true)
     expect(meta.dojoExtraSearchPlies).toBe(1)
-    expect(meta.hardAiSearchPlies).toBe(3)
+    expect(meta.hardAiSearchPlies).toBe(4)
   })
 })
 

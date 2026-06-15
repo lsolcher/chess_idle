@@ -1,11 +1,11 @@
 /**
  * Application release metadata — single source of truth for UI and save schema.
  */
-export const APP_VERSION = '0.3.0' as const
-export const APP_RELEASE_CODENAME = 'Arena & Dojo' as const
+export const APP_VERSION = '0.4.0' as const
+export const APP_RELEASE_CODENAME = 'Visuals & Matchmaking' as const
 
-/** Serialized into every `GameState` / save export. */
-export const GAME_SCHEMA_VERSION = APP_VERSION
+/** Serialized into every `GameState` / save export (unchanged until v0.4 schema migration). */
+export const GAME_SCHEMA_VERSION = '0.3.0' as const
 
 /** Pinia game save blob (`gameStore`). */
 export const GAME_SAVE_STORAGE_KEY = 'idle-chess-rpg-v0.3-save' as const
@@ -17,6 +17,9 @@ export const LEGACY_META_STORE_PERSIST_KEY = 'idle-chess-rpg-meta-v1' as const
 
 /** Ghost army snapshots (`ghostSystem`). */
 export const GHOST_ARMY_SCHEMA_VERSION = '0.8.0' as const
+
+/** Dev mode cheats panel (`devStore`) — not part of campaign save. */
+export const DEV_STORE_PERSIST_KEY = 'idle-chess-rpg-dev-v1' as const
 
 /** Audio settings (`audioStore`). */
 export const AUDIO_SAVE_STORAGE_KEY = 'idle-chess-rpg-v0.3-audio' as const

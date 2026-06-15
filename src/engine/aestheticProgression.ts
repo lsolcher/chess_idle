@@ -15,13 +15,16 @@
  *
  * Run-scoped visuals use **currentStage** (resets on prestige). Music layers & trophies use **lifetime** peaks.
  */
-import type { PieceKind } from '@/types/game'
+import type { MusicLayerId } from '@/engine/musicLayers'
+import type { PieceKind, PieceUpgradeLevels } from '@/types/game'
 
 export const VISUAL_TIER_EXPONENT = 1.5
 export const VISUAL_TIER_ANCHOR = 1
 export const MAX_VISUAL_TIER = 12
 export const MAX_BOARD_EVOLUTION_TIER = 6
 export const MAX_PIECE_AURA_TIER = 4
+/** Victory glow tiers from wave wins (0–6). Unicode glyphs stay; CSS adds glow/sparkle. */
+export const MAX_VICTORY_GLOW_TIER = 6
 
 /** Documented unlock stages for tasks.md / UI (tiers 1–8 sample). */
 export const VISUAL_TIER_UNLOCK_TABLE: readonly { tier: number; stage: number }[] = Array.from(
@@ -93,6 +96,101 @@ export function resolvePermanentVisualTrophies(
   if (totalPrestiges >= 3) trophies.push('god-crown')
   if (maxStageEver >= 100) trophies.push('century-lattice')
   return trophies
+}
+
+/** Board material palette for the living-board shell (wood → obsidian → celestial). */
+export type BoardEvolutionMaterial = 'wood' | 'obsidian' | 'celestial'
+
+export function getBoardEvolutionMaterial(tier: number): BoardEvolutionMaterial {
+  if (tier <= 2) return 'wood'
+  if (tier <= 4) return 'obsidian'
+  return 'celestial'
+}
+
+/** Outer grid frame — shifts with `getBoardEvolutionTier(currentStage)`. */
+export function getBoardEvolutionShellClasses(tier: number): string {
+  const material = getBoardEvolutionMaterial(tier)
+  if (material === 'wood') {
+    return 'board-evolution-wood shadow-[0_8px_32px_rgba(120,53,15,0.25)]'
+  }
+  if (material === 'obsidian') {
+    return 'board-evolution-obsidian shadow-[0_8px_36px_rgba(15,23,42,0.55)]'
+  }
+  return 'board-evolution-celestial shadow-[0_8px_40px_rgba(56,189,248,0.2)]'
+}
+
+/** Per-square gradient overlay (stacked on cosmetic theme squares). */
+export function getBoardSquareEvolutionClasses(
+  tier: number,
+  light: boolean,
+): string {
+  const material = getBoardEvolutionMaterial(tier)
+  if (tier <= 0) return ''
+  if (material === 'wood') {
+    return light
+      ? 'board-square-wood-light'
+      : 'board-square-wood-dark'
+  }
+  if (material === 'obsidian') {
+    return light
+      ? 'board-square-obsidian-light'
+      : 'board-square-obsidian-dark'
+  }
+  return light
+    ? 'board-square-celestial-light'
+    : 'board-square-celestial-dark'
+}
+
+/** Sum of per-track upgrade levels on a piece (power aura intensity). */
+export function sumPieceUpgradeLevels(levels: PieceUpgradeLevels): number {
+  return levels.ap + levels.hp + levels.def + levels.initiative
+}
+
+/**
+ * Maps total upgrade ranks to aura tier 0–4 (independent of run visual tier).
+ */
+export function getPiecePowerAuraTier(levels: PieceUpgradeLevels): number {
+  const total = sumPieceUpgradeLevels(levels)
+  if (total <= 4) return 0
+  if (total <= 12) return 1
+  if (total <= 24) return 2
+  if (total <= 40) return 3
+  return 4
+}
+
+/** Level-based drop-shadow / ring glow for player pieces. */
+export function getPiecePowerAuraClasses(
+  side: 'player' | 'enemy',
+  powerTier: number,
+): string {
+  if (powerTier <= 0 || side !== 'player') return ''
+  const shadows = [
+    '',
+    'drop-shadow-[0_0_4px_rgba(56,189,248,0.45)]',
+    'drop-shadow-[0_0_8px_rgba(56,189,248,0.55)] ring-1 ring-sky-400/35',
+    'drop-shadow-[0_0_12px_rgba(167,139,250,0.6)] ring-1 ring-violet-400/45',
+    'drop-shadow-[0_0_16px_rgba(250,204,21,0.7)] ring-2 ring-amber-300/50 animate-power-aura-pulse',
+  ]
+  return shadows[Math.min(powerTier, 4)] ?? ''
+}
+
+/** Shell backdrop keyed to lifetime stage peaks + active music layers. */
+export function getShellAtmosphereClasses(
+  maxStageEver: number,
+  musicLayers: readonly MusicLayerId[],
+): string {
+  const stage = Math.max(0, Math.floor(maxStageEver))
+  const parts: string[] = ['shell-atmosphere-base']
+  if (stage >= 8) parts.push('shell-atmosphere-mid')
+  if (stage >= 25) parts.push('shell-atmosphere-high')
+  if (stage >= 50) parts.push('shell-atmosphere-deep')
+  if (stage >= 100) parts.push('shell-atmosphere-apex')
+  if (musicLayers.includes('strings') || musicLayers.includes('orchestral')) {
+    parts.push('shell-atmosphere-strings')
+  }
+  if (musicLayers.includes('celestial')) parts.push('shell-atmosphere-celestial')
+  if (musicLayers.includes('god')) parts.push('shell-atmosphere-god')
+  return parts.join(' ')
 }
 
 /** Tailwind classes for board square evolution (cheap borders only). */
@@ -174,10 +272,109 @@ export function getPermanentTrophyShellClasses(
   return parts.join(' ')
 }
 
+/** Waves cleared in the current run (stage 1 = 0 wins). */
+export function getWavesClearedThisRun(currentStage: number): number {
+  return Math.max(0, Math.floor(currentStage) - 1)
+}
+
+/**
+ * Run streak glow from waves cleared this run (resets on prestige).
+ * Thresholds tuned so 1–3 wins in a session are visibly different.
+ */
+export function getRunVictoryGlowTier(wavesClearedThisRun: number): number {
+  const w = Math.max(0, Math.floor(wavesClearedThisRun))
+  if (w < 1) return 0
+  if (w < 3) return 1
+  if (w < 5) return 2
+  if (w < 8) return 3
+  if (w < 12) return 4
+  if (w < 18) return 5
+  return 6
+}
+
+/** Permanent sparkle bonus from lifetime wave clears. */
+export function getLifetimeVictoryGlowBonus(lifetimeWavesCleared: number): number {
+  const n = Math.max(0, Math.floor(lifetimeWavesCleared))
+  if (n < 10) return 0
+  if (n < 40) return 1
+  if (n < 120) return 2
+  return 3
+}
+
+export function getVictoryGlowTier(
+  wavesClearedThisRun: number,
+  lifetimeWavesCleared: number,
+): number {
+  const run = getRunVictoryGlowTier(wavesClearedThisRun)
+  const bonus = getLifetimeVictoryGlowBonus(lifetimeWavesCleared)
+  return Math.min(MAX_VICTORY_GLOW_TIER, run + Math.min(2, bonus))
+}
+
+export type VictoryGlowLabelId =
+  | 'none'
+  | 'warm'
+  | 'bright'
+  | 'shimmer'
+  | 'radiant'
+  | 'blazing'
+  | 'champion'
+
+/** Run-scoped shell backdrop quality (Unicode pieces unchanged). */
+export type VictoryBackgroundTier = 'worn' | 'rising' | 'triumphant'
+
+export function getVictoryBackgroundTier(victoryGlowTier: number): VictoryBackgroundTier {
+  const t = Math.max(0, Math.floor(victoryGlowTier))
+  if (t >= 5) return 'triumphant'
+  if (t >= 2) return 'rising'
+  return 'worn'
+}
+
+export function getVictoryBackgroundShellClasses(tier: VictoryBackgroundTier): string {
+  switch (tier) {
+    case 'triumphant':
+      return 'shell-victory-bg-triumphant'
+    case 'rising':
+      return 'shell-victory-bg-rising'
+    default:
+      return 'shell-victory-bg-worn'
+  }
+}
+
+export function getVictoryGlowLabelId(tier: number): VictoryGlowLabelId {
+  if (tier <= 0) return 'none'
+  if (tier === 1) return 'warm'
+  if (tier === 2) return 'bright'
+  if (tier === 3) return 'shimmer'
+  if (tier === 4) return 'radiant'
+  if (tier === 5) return 'blazing'
+  return 'champion'
+}
+
+/** CSS classes for standard chess glyphs — glow/sparkle only, no sprite swap. */
+export function getPieceVictoryGlowClasses(
+  tier: number,
+  kind: PieceKind,
+  bursting = false,
+): string {
+  if (tier <= 0) return bursting ? 'victory-glow-burst' : ''
+  const king = kind === 'king' ? ' victory-glow-king' : ''
+  const burst = bursting ? ' victory-glow-burst' : ''
+  if (tier === 1) return `victory-glow-1${king}${burst}`
+  if (tier === 2) return `victory-glow-2${king}${burst}`
+  if (tier === 3) return `victory-glow-3 victory-glow-sparkle${king}${burst}`
+  if (tier === 4) return `victory-glow-4 victory-glow-sparkle${king}${burst}`
+  if (tier === 5) return `victory-glow-5 victory-glow-sparkle victory-glow-sparkle-dense${king}${burst}`
+  return `victory-glow-6 victory-glow-sparkle victory-glow-sparkle-dense victory-glow-champion${king}${burst}`
+}
+
 export interface AestheticProgressSnapshot {
   visualTier: number
   boardEvolutionTier: number
   pieceAuraTier: number
+  victoryGlowTier: number
+  victoryBackgroundTier: VictoryBackgroundTier
+  wavesClearedThisRun: number
+  lifetimeWavesCleared: number
   nextVisualTierStage: number | null
   godTierUnlocked: boolean
   permanentTrophies: PermanentVisualTrophyId[]
@@ -188,11 +385,19 @@ export function buildAestheticProgressSnapshot(
   currentStage: number,
   maxStageEver: number,
   totalPrestiges: number,
+  lifetimeWavesCleared = 0,
 ): AestheticProgressSnapshot {
+  const wavesClearedThisRun = getWavesClearedThisRun(currentStage)
   return {
     visualTier: getVisualTier(currentStage),
     boardEvolutionTier: getBoardEvolutionTier(currentStage),
     pieceAuraTier: getPieceAuraTier(currentStage),
+    victoryGlowTier: getVictoryGlowTier(wavesClearedThisRun, lifetimeWavesCleared),
+    victoryBackgroundTier: getVictoryBackgroundTier(
+      getVictoryGlowTier(wavesClearedThisRun, lifetimeWavesCleared),
+    ),
+    wavesClearedThisRun,
+    lifetimeWavesCleared,
     nextVisualTierStage: getNextVisualTierStage(currentStage),
     godTierUnlocked: isGodTierVisualUnlocked(maxStageEver, totalPrestiges),
     permanentTrophies: resolvePermanentVisualTrophies(maxStageEver, totalPrestiges),

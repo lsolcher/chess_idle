@@ -21,6 +21,17 @@ export type MusicLayerId =
   | 'celestial'
   | 'god'
 
+/** Layers with explicit symphonic mix profiles (dynamic balance pass). */
+export const DYNAMIC_MIX_LAYER_IDS = [
+  'base',
+  'synth',
+  'arpeggio',
+  'choral',
+  'orchestral',
+] as const satisfies readonly MusicLayerId[]
+
+export type DynamicMixLayerId = (typeof DYNAMIC_MIX_LAYER_IDS)[number]
+
 export interface MusicLayerDefinition {
   id: MusicLayerId
   label: string
@@ -58,6 +69,48 @@ export const MUSIC_LAYER_UNLOCK_TABLE: readonly {
   stage: d.stage,
   prestige: d.prestige,
 }))
+
+/** Per-layer mix bias: early-run vs late-run emphasis (0–1 stage curve anchor). */
+const DYNAMIC_MIX_PROFILE: Record<
+  DynamicMixLayerId,
+  { earlyBoost: number; lateBoost: number; prestigeBias: number }
+> = {
+  base: { earlyBoost: 1.12, lateBoost: 0.88, prestigeBias: 0.02 },
+  synth: { earlyBoost: 1.18, lateBoost: 0.82, prestigeBias: 0.04 },
+  arpeggio: { earlyBoost: 1.15, lateBoost: 0.9, prestigeBias: 0.03 },
+  choral: { earlyBoost: 0.75, lateBoost: 1.22, prestigeBias: 0.12 },
+  orchestral: { earlyBoost: 0.7, lateBoost: 1.28, prestigeBias: 0.15 },
+}
+
+/**
+ * Adjusts per-layer gain for the active procedural stack.
+ * Early stages emphasize base/synth/arpeggio; high stage + prestige swell choral/orchestral.
+ */
+export function computeDynamicLayerGain(
+  layerId: MusicLayerId,
+  currentStage: number,
+  prestigeLevel: number,
+): number {
+  if (!(DYNAMIC_MIX_LAYER_IDS as readonly string[]).includes(layerId)) {
+    return 1
+  }
+
+  const profile = DYNAMIC_MIX_PROFILE[layerId as DynamicMixLayerId]
+  const stage = Math.max(1, Math.floor(currentStage))
+  const prestiges = Math.max(0, Math.floor(prestigeLevel))
+
+  const stageT = Math.min(1, Math.log10(stage + 1) / Math.log10(101))
+  const earlyWeight = 1 - stageT
+  const lateWeight = stageT
+  const prestigeLift = Math.min(0.35, prestiges * profile.prestigeBias)
+
+  const blend =
+    profile.earlyBoost * earlyWeight +
+    profile.lateBoost * lateWeight +
+    prestigeLift
+
+  return Math.max(0.55, Math.min(1.45, blend))
+}
 
 /** Layers unlocked for this lifetime profile (always includes base when music enabled). */
 export function getUnlockedMusicLayers(

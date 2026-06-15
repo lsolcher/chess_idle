@@ -1,19 +1,8 @@
 <script setup lang="ts">
+import { t } from '@/i18n'
 import { useGameStore } from '@/store'
-import type { AutoAiPersonality } from '@/types/game'
 
 const store = useGameStore()
-
-const strategies: { id: AutoAiPersonality; label: string }[] = [
-  { id: 'defensive', label: 'Defensive' },
-  { id: 'aggressive', label: 'Aggressive' },
-  { id: 'protectKing', label: 'Protect King' },
-]
-
-function onStrategyChange(event: Event): void {
-  const value = (event.target as HTMLSelectElement).value as AutoAiPersonality
-  store.setAutoAiPersonality(value)
-}
 
 const staminaPct = (): number =>
   store.staminaMax > 0 ? (store.staminaCurrent / store.staminaMax) * 100 : 0
@@ -37,21 +26,12 @@ const staminaPct = (): number =>
         <span :class="store.isCombatLoopRunning ? 'text-emerald-400' : 'text-slate-500'">
           {{ store.isCombatLoopRunning ? 'Loop ON' : 'Loop OFF' }}
         </span>
-        <label
+        <span
           v-if="store.autoPlay && store.isWaveActive"
-          class="flex items-center gap-1.5 text-[10px] text-slate-400"
+          class="text-[10px] text-slate-400"
         >
-          <span class="uppercase tracking-wide">Strategy</span>
-          <select
-            class="rounded border border-slate-600 bg-slate-800 px-2 py-0.5 text-xs text-slate-200"
-            :value="store.autoAiPersonality"
-            @change="onStrategyChange"
-          >
-            <option v-for="s in strategies" :key="s.id" :value="s.id">
-              {{ s.label }}
-            </option>
-          </select>
-        </label>
+          {{ t('combatFooter.adaptiveAi', { profile: store.effectiveAutoAiPersonality }) }}
+        </span>
       </div>
 
       <div class="flex items-center gap-2">

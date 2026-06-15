@@ -20,13 +20,6 @@ function onPurchase(id: string): void {
       Reach Stage 20 and prestige once to unlock the Elo meta tree.
     </p>
 
-    <p
-      v-else-if="store.exhibitionGoldPerSec > 0"
-      class="mb-3 text-[10px] text-slate-500"
-    >
-      Exhibitions: +{{ store.exhibitionGoldPerSec.toFixed(2) }} G/s (background)
-    </p>
-
     <ul class="divide-y divide-slate-800">
       <li
         v-for="offer in offers"

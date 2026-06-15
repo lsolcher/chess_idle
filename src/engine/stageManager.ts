@@ -4,13 +4,24 @@
  *
  * Supporter convenience flags do not alter enemy scaling here — see `supporterQoL.ts`.
  */
+import {
+  ENEMY_AP_STAGE_GROWTH,
+  ENEMY_HP_STAGE_GROWTH,
+} from '@/engine/balanceConstants'
 import { getSupporterOfflineGoldMult } from '@/engine/supporterQoL'
+import {
+  generatePatternEnemyComposition,
+  resolveWavePatternForStage,
+  type WavePatternId,
+} from '@/engine/wavePatterns'
 import {
   generateBossWaveKinds,
   isBossPieceKind,
   resolveBossIdentity,
   type BossIdentityId,
 } from './bossIdentity'
+
+export { resolveWavePatternForStage, type WavePatternId } from '@/engine/wavePatterns'
 import { bootstrapPieceInitiative } from './initiative'
 import { coordKey, occupiedKeysFromPieces, type BoardCoord } from './board'
 import {
@@ -23,9 +34,13 @@ import {
 /** Maximum enemies per wave (tasks.md Phase 3.10). */
 export const MAX_WAVE_PIECES = 16
 
-/** Continuous enemy stat scaling beyond band tables. */
-export const ENEMY_HP_STAGE_GROWTH = 1.08
-export const ENEMY_AP_STAGE_GROWTH = 1.06
+/** Continuous enemy stat scaling beyond band tables (tuned in `balanceConstants.ts`). */
+export { ENEMY_HP_STAGE_GROWTH, ENEMY_AP_STAGE_GROWTH } from '@/engine/balanceConstants'
+
+/** Full exponential HP scaling applies through this stage; late game uses log soft-cap. */
+export const ENEMY_HP_SOFT_CAP_STAGE = 50
+/** Per-stage log multiplier above soft-cap: `1 + log1p(stage - 50) * LATE_HP_LOG_FACTOR`. */
+export const ENEMY_HP_LATE_LOG_FACTOR = 0.35
 
 /** Boss cadence: every 10 after the milestone table (GDD §3.1 / §3.2). */
 export const BOSS_STAGE_INTERVAL = 10
@@ -39,11 +54,16 @@ const ENEMY_SPAWN_RANKS = [4, 5, 6, 7] as const
 const PICK_ORDER: PieceKind[] = ['pawn', 'knight', 'bishop', 'rook', 'queen']
 
 /**
- * Enemy HP multiplier: `1.08^(stage - 1)` applied on top of piece base HP.
+ * Enemy HP multiplier: exponential through {@link ENEMY_HP_SOFT_CAP_STAGE}, then log soft-cap.
+ * Prevents Stage 80+ attrition-only clears while preserving early/prestige pacing.
  */
 export function calculateEnemyStageHpMult(stage: number): number {
-  const safe = Math.max(1, stage)
-  return ENEMY_HP_STAGE_GROWTH ** (safe - 1)
+  const safe = Math.max(1, Math.floor(stage))
+  const cappedStage = Math.min(safe, ENEMY_HP_SOFT_CAP_STAGE)
+  const exponential = ENEMY_HP_STAGE_GROWTH ** (cappedStage - 1)
+  if (safe <= ENEMY_HP_SOFT_CAP_STAGE) return exponential
+  const late = 1 + Math.log1p(safe - ENEMY_HP_SOFT_CAP_STAGE) * ENEMY_HP_LATE_LOG_FACTOR
+  return exponential * late
 }
 
 /**
@@ -123,12 +143,8 @@ export function generateEnemyComposition(stage: number, waveSize: number): Piece
     return bossKinds.slice(0, waveSize)
   }
 
-  const kinds: PieceKind[] = []
-  const minionSlots = Math.max(1, waveSize)
-  for (let i = 0; i < minionSlots; i += 1) {
-    kinds.push(pickEnemyKindForSlot(stage, i))
-  }
-  return kinds
+  const pattern = resolveWavePatternForStage(stage)
+  return generatePatternEnemyComposition(stage, waveSize, pattern)
 }
 
 /** Decree-safe pawn layouts for onboarding (GDD §1.2, stages 1–5). */
@@ -144,15 +160,37 @@ function decreeSafePawnPositions(count: number): { file: number; rank: number }[
   return layouts[index] ?? layouts[0]!
 }
 
-function firstFreeCoord(
-  occupied: Set<string>,
-  candidates: BoardCoord[],
-  fallback: BoardCoord,
-): BoardCoord {
-  for (const coord of candidates) {
-    if (!occupied.has(coordKey(coord))) return coord
+/** All enemy spawn ranks (ranks 4–7), file-major order for deterministic fills. */
+export function listEnemySpawnCoords(): BoardCoord[] {
+  const coords: BoardCoord[] = []
+  for (const rank of ENEMY_SPAWN_RANKS) {
+    for (let file = 0; file < 8; file += 1) {
+      coords.push({ file, rank })
+    }
   }
-  return fallback
+  return coords
+}
+
+function listFreeSpawnCoords(occupied: Set<string>, preferred: BoardCoord[]): BoardCoord[] {
+  const freePreferred = preferred.filter((c) => !occupied.has(coordKey(c)))
+  if (freePreferred.length > 0) return freePreferred
+  return listEnemySpawnCoords().filter((c) => !occupied.has(coordKey(c)))
+}
+
+function takeSpawnCoord(
+  occupied: Set<string>,
+  kind: PieceKind,
+  stage: number,
+  index: number,
+): BoardCoord {
+  const preferred = buildSpawnCandidates(kind, stage, index)
+  const free = listFreeSpawnCoords(occupied, preferred)
+  if (free.length === 0) {
+    throw new Error(
+      `spawnProceduralWave: no free square for ${kind} (stage ${stage}, index ${index})`,
+    )
+  }
+  return free[0]!
 }
 
 function buildSpawnCandidates(kind: PieceKind, stage: number, index: number): BoardCoord[] {
@@ -188,16 +226,6 @@ function buildSpawnCandidates(kind: PieceKind, stage: number, index: number): Bo
   }
 
   return candidates
-}
-
-function nextSpawnCoord(
-  occupied: Set<string>,
-  kind: PieceKind,
-  stage: number,
-  index: number,
-): BoardCoord {
-  const candidates = buildSpawnCandidates(kind, stage, index)
-  return firstFreeCoord(occupied, candidates, { file: index % 8, rank: 6 })
 }
 
 /**
@@ -259,7 +287,7 @@ export function spawnProceduralWave(
   const identity = resolveBossIdentity(stage)
 
   kinds.forEach((kind, index) => {
-    const position = nextSpawnCoord(occupied, kind, stage, index)
+    const position = takeSpawnCoord(occupied, kind, stage, index)
     occupied.add(coordKey(position))
     const isBossPiece = Boolean(identity && isBossPieceKind(identity, kind, index))
     const bossId: BossIdentityId | undefined =
@@ -295,6 +323,19 @@ export function runStageManagerSanityCheck(): { passed: boolean; messages: strin
 
   assert('stage 1 HP mult is 1', calculateEnemyStageHpMult(1) === 1)
   assert('stage 10 HP mult ~2', calculateEnemyStageHpMult(10) > 1.9)
+  assert(
+    'stage 80 softer than pure exponential',
+    calculateEnemyStageHpMult(80) <
+      ENEMY_HP_STAGE_GROWTH ** 79,
+  )
+  assert(
+    'stage 100 HP mult grows sub-linearly past cap',
+    calculateEnemyStageHpMult(100) > calculateEnemyStageHpMult(80),
+  )
+
+  const fullBoard = spawnProceduralWave(50, 0)
+  const fullKeys = fullBoard.map((p) => coordKey(p.position))
+  assert('full wave has unique coords', new Set(fullKeys).size === fullKeys.length)
   assert('stage 10 is boss', isBossStage(10))
   assert('stage 11 not boss', !isBossStage(11))
   assert('wave cap 16', getProceduralWaveSize(100) === MAX_WAVE_PIECES)

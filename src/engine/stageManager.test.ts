@@ -1,4 +1,8 @@
 import { describe, expect, it } from 'vitest'
+import {
+  ENEMY_AP_STAGE_GROWTH,
+  ENEMY_HP_STAGE_GROWTH,
+} from '@/engine/balanceConstants'
 import { coordKey } from '@/engine/board'
 import { createPiece } from '@/types/game'
 import {
@@ -21,15 +25,18 @@ describe('stageManager endless scaling', () => {
     expect(runStageManagerSanityCheck().passed).toBe(true)
   })
 
-  it('scales HP by 1.08^(stage-1)', () => {
+  it('scales HP exponentially through stage 50 then log soft-cap', () => {
     expect(calculateEnemyStageHpMult(1)).toBeCloseTo(1, 5)
-    expect(calculateEnemyStageHpMult(2)).toBeCloseTo(1.08, 5)
-    expect(calculateEnemyStageHpMult(50)).toBeCloseTo(1.08 ** 49, 2)
+    expect(calculateEnemyStageHpMult(2)).toBeCloseTo(ENEMY_HP_STAGE_GROWTH, 5)
+    expect(calculateEnemyStageHpMult(50)).toBeCloseTo(ENEMY_HP_STAGE_GROWTH ** 49, 2)
+    const pure80 = ENEMY_HP_STAGE_GROWTH ** 79
+    expect(calculateEnemyStageHpMult(80)).toBeLessThan(pure80)
+    expect(calculateEnemyStageHpMult(100)).toBeGreaterThan(calculateEnemyStageHpMult(80))
   })
 
-  it('scales AP by 1.06^(stage-1)', () => {
+  it('scales AP by balance ENEMY_AP_STAGE_GROWTH^(stage-1)', () => {
     expect(calculateEnemyStageApMult(1)).toBeCloseTo(1, 5)
-    expect(calculateEnemyStageApMult(20)).toBeCloseTo(1.06 ** 19, 2)
+    expect(calculateEnemyStageApMult(20)).toBeCloseTo(ENEMY_AP_STAGE_GROWTH ** 19, 2)
   })
 
   it('caps wave size at 16', () => {

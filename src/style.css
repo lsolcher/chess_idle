@@ -1,4 +1,5 @@
 @import 'tailwindcss';
+@import './styles/fantasy-theme.css';
 
 @theme {
   --color-board-light: #334155;
@@ -76,4 +77,471 @@
 
 .animate-capture-flash {
   animation: capture-flash 0.55s ease-out forwards;
+}
+
+@keyframes capture-heavy {
+  0% {
+    background-color: rgb(250 204 21 / 0.75);
+    box-shadow: inset 0 0 20px rgb(250 204 21 / 0.85);
+    transform: scale(1.02);
+  }
+  100% {
+    background-color: transparent;
+    box-shadow: none;
+    transform: scale(1);
+  }
+}
+
+.animate-capture-heavy {
+  animation: capture-heavy 0.45s ease-out forwards;
+}
+
+@keyframes clash-flash {
+  0% {
+    background-color: rgb(248 250 252 / 0.35);
+    box-shadow: inset 0 0 8px rgb(255 255 255 / 0.5);
+  }
+  100% {
+    background-color: transparent;
+    box-shadow: none;
+  }
+}
+
+.animate-clash-flash {
+  animation: clash-flash 0.42s ease-out forwards;
+}
+
+@keyframes clash-damage {
+  0% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(-0.5rem) scale(0.9);
+  }
+}
+
+.animate-clash-damage {
+  animation: clash-damage 0.48s ease-out forwards;
+}
+
+.combat-clash-icon {
+  animation: clash-icon-pop 0.48s ease-out forwards;
+}
+
+@keyframes clash-icon-pop {
+  0% {
+    opacity: 0;
+    transform: scale(0.6) rotate(-12deg);
+  }
+  25% {
+    opacity: 1;
+    transform: scale(1.15) rotate(0deg);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(0.85) rotate(8deg);
+  }
+}
+
+@keyframes power-aura-pulse {
+  0%,
+  100% {
+    filter: brightness(1);
+  }
+  50% {
+    filter: brightness(1.12);
+  }
+}
+
+.animate-power-aura-pulse {
+  animation: power-aura-pulse 2.2s ease-in-out infinite;
+}
+
+@keyframes piece-level-pulse {
+  0% {
+    box-shadow: 0 0 0 0 rgb(56 189 248 / 0.65);
+    transform: scale(1);
+  }
+  40% {
+    box-shadow: 0 0 0 10px rgb(56 189 248 / 0);
+    transform: scale(1.08);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgb(56 189 248 / 0);
+    transform: scale(1);
+  }
+}
+
+.animate-piece-level-pulse {
+  animation: piece-level-pulse 0.72s ease-out;
+}
+
+/* Win-streak glow on standard Unicode chess glyphs (tier 0 = off) */
+.chess-piece-victory-wrap {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+}
+
+.victory-glow-1 {
+  filter: drop-shadow(0 0 4px rgba(56, 189, 248, 0.55));
+}
+
+.victory-glow-2 {
+  filter: drop-shadow(0 0 7px rgba(56, 189, 248, 0.65));
+  animation: victory-glow-pulse 2.4s ease-in-out infinite;
+}
+
+.victory-glow-3 {
+  filter: drop-shadow(0 0 9px rgba(129, 140, 248, 0.7));
+  animation: victory-glow-pulse 2s ease-in-out infinite;
+}
+
+.victory-glow-4 {
+  filter: drop-shadow(0 0 11px rgba(167, 139, 250, 0.75))
+    drop-shadow(0 0 4px rgba(250, 204, 21, 0.45));
+  animation: victory-glow-pulse 1.8s ease-in-out infinite;
+}
+
+.victory-glow-5 {
+  filter: drop-shadow(0 0 14px rgba(250, 204, 21, 0.8))
+    drop-shadow(0 0 6px rgba(56, 189, 248, 0.5));
+  animation: victory-glow-pulse 1.5s ease-in-out infinite;
+}
+
+.victory-glow-6 {
+  filter: drop-shadow(0 0 16px rgba(250, 204, 21, 0.9))
+    drop-shadow(0 0 8px rgba(244, 114, 182, 0.55));
+  animation: victory-glow-pulse 1.2s ease-in-out infinite;
+}
+
+.victory-glow-king.victory-glow-3,
+.victory-glow-king.victory-glow-4,
+.victory-glow-king.victory-glow-5,
+.victory-glow-king.victory-glow-6 {
+  filter: drop-shadow(0 0 12px rgba(56, 189, 248, 0.85))
+    drop-shadow(0 0 10px rgba(250, 204, 21, 0.65));
+}
+
+.victory-glow-sparkle::before,
+.victory-glow-sparkle::after {
+  content: '';
+  position: absolute;
+  border-radius: 50%;
+  pointer-events: none;
+  animation: victory-sparkle 2.2s ease-in-out infinite;
+}
+
+.victory-glow-sparkle::before {
+  top: -2px;
+  right: -4px;
+  width: 4px;
+  height: 4px;
+  background: rgba(250, 204, 21, 0.95);
+  box-shadow: 0 0 6px rgba(250, 204, 21, 0.8);
+}
+
+.victory-glow-sparkle::after {
+  bottom: 0;
+  left: -3px;
+  width: 3px;
+  height: 3px;
+  background: rgba(186, 230, 253, 0.95);
+  animation-delay: 0.9s;
+  box-shadow: 0 0 5px rgba(56, 189, 248, 0.7);
+}
+
+.victory-glow-sparkle-dense::before {
+  box-shadow:
+    0 0 6px rgba(250, 204, 21, 0.8),
+    8px 4px 0 0 rgba(167, 139, 250, 0.5);
+}
+
+.victory-glow-burst {
+  animation: victory-win-burst 1.4s ease-out;
+}
+
+@keyframes victory-glow-pulse {
+  0%,
+  100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.05);
+  }
+}
+
+@keyframes victory-sparkle {
+  0%,
+  100% {
+    opacity: 0.35;
+    transform: scale(0.7);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.2);
+  }
+}
+
+@keyframes victory-win-burst {
+  0% {
+    transform: scale(1);
+    filter: brightness(1) drop-shadow(0 0 0 transparent);
+  }
+  35% {
+    transform: scale(1.14);
+    filter: brightness(1.35) drop-shadow(0 0 18px rgba(250, 204, 21, 0.95));
+  }
+  100% {
+    transform: scale(1);
+    filter: brightness(1);
+  }
+}
+
+.combat-board-zoom {
+  transform: scale(1.04);
+  transition: transform 0.1s ease-out;
+}
+
+.combat-shell-zoom > .relative.z-10 {
+  transform: scale(1.012);
+  transition: transform 0.1s ease-out;
+}
+
+/* Board evolution materials */
+.board-evolution-wood {
+  border-color: rgb(120 53 15 / 0.45);
+  background: linear-gradient(145deg, rgb(41 26 14 / 0.35), transparent);
+}
+
+.board-evolution-obsidian {
+  border-color: rgb(15 23 42 / 0.7);
+  background: linear-gradient(160deg, rgb(24 24 27 / 0.5), rgb(88 28 135 / 0.08));
+}
+
+.board-evolution-celestial {
+  border-color: rgb(56 189 248 / 0.35);
+  background: linear-gradient(165deg, rgb(8 47 73 / 0.45), rgb(217 70 239 / 0.12));
+}
+
+.board-square-wood-light {
+  background-image: linear-gradient(135deg, rgb(180 83 9 / 0.06), transparent);
+}
+
+.board-square-wood-dark {
+  background-image: linear-gradient(135deg, rgb(69 26 3 / 0.12), transparent);
+}
+
+.board-square-obsidian-light {
+  background-image: linear-gradient(135deg, rgb(148 163 184 / 0.08), transparent);
+}
+
+.board-square-obsidian-dark {
+  background-image: linear-gradient(135deg, rgb(0 0 0 / 0.2), rgb(88 28 135 / 0.06));
+}
+
+.board-square-celestial-light {
+  background-image: linear-gradient(135deg, rgb(56 189 248 / 0.1), rgb(217 70 239 / 0.05));
+}
+
+.board-square-celestial-dark {
+  background-image: linear-gradient(135deg, rgb(8 47 73 / 0.18), rgb(112 26 117 / 0.1));
+}
+
+/* Shell atmosphere (lifetime max stage + music) */
+.shell-atmosphere-base {
+  background-color: rgb(2 6 23);
+}
+
+/* Run win streak overlay: worn (dull) → rising → triumphant (best) */
+.shell-victory-bg-worn {
+  background: linear-gradient(
+    180deg,
+    rgb(30 27 24 / 0.72) 0%,
+    rgb(15 18 28 / 0.88) 40%,
+    rgb(8 8 14 / 0.95) 100%
+  );
+  transition: background 0.6s ease;
+}
+
+.shell-victory-bg-rising {
+  background:
+    radial-gradient(ellipse 90% 55% at 50% -15%, rgb(30 64 175 / 0.4), transparent 55%),
+    radial-gradient(ellipse 70% 50% at 85% 90%, rgb(88 28 135 / 0.22), transparent 50%),
+    linear-gradient(180deg, rgb(15 23 42 / 0.75) 0%, rgb(8 12 28 / 0.92) 100%);
+  transition: background 0.6s ease;
+}
+
+.shell-victory-bg-triumphant {
+  background:
+    radial-gradient(ellipse 95% 60% at 50% -10%, rgb(56 189 248 / 0.35), transparent 52%),
+    radial-gradient(ellipse 75% 55% at 15% 100%, rgb(250 204 21 / 0.18), transparent 48%),
+    radial-gradient(ellipse 65% 45% at 90% 40%, rgb(167 139 250 / 0.25), transparent 45%),
+    linear-gradient(165deg, rgb(12 20 48 / 0.7) 0%, rgb(6 10 28 / 0.9) 100%);
+  animation: victory-bg-shimmer 8s ease-in-out infinite alternate;
+  transition: background 0.6s ease;
+}
+
+@keyframes victory-bg-shimmer {
+  0% {
+    opacity: 0.88;
+  }
+  100% {
+    opacity: 1;
+  }
+}
+
+.shell-atmosphere-mid {
+  background-image: radial-gradient(ellipse 80% 50% at 50% -10%, rgb(30 58 138 / 0.25), transparent);
+}
+
+.shell-atmosphere-high {
+  background-image: radial-gradient(ellipse 70% 45% at 80% 0%, rgb(88 28 135 / 0.15), transparent);
+}
+
+.shell-atmosphere-deep {
+  background-image: radial-gradient(ellipse 60% 40% at 20% 100%, rgb(180 83 9 / 0.08), transparent);
+}
+
+.shell-atmosphere-apex {
+  background-image: radial-gradient(ellipse 90% 55% at 50% 50%, rgb(34 211 238 / 0.06), transparent);
+}
+
+.shell-atmosphere-strings {
+  --shell-glow: rgb(139 92 246 / 0.12);
+}
+
+.shell-atmosphere-celestial {
+  --shell-glow: rgb(56 189 248 / 0.14);
+}
+
+.shell-atmosphere-god {
+  --shell-glow: rgb(250 204 21 / 0.1);
+}
+
+.shell-parallax {
+  overflow: hidden;
+}
+
+.shell-parallax-layer {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.shell-parallax-stars {
+  background-image: radial-gradient(1px 1px at 20% 30%, rgb(255 255 255 / 0.15), transparent),
+    radial-gradient(1px 1px at 60% 70%, rgb(255 255 255 / 0.1), transparent),
+    radial-gradient(1px 1px at 80% 20%, rgb(255 255 255 / 0.12), transparent);
+  animation: parallax-drift 120s linear infinite;
+}
+
+.shell-parallax-mist {
+  background: linear-gradient(180deg, transparent, var(--shell-glow, transparent) 40%, transparent);
+  opacity: 0.85;
+  animation: parallax-mist 18s ease-in-out infinite alternate;
+}
+
+.shell-light-shafts {
+  background: linear-gradient(
+    105deg,
+    transparent 40%,
+    rgb(250 204 21 / 0.04) 48%,
+    rgb(56 189 248 / 0.06) 52%,
+    transparent 60%
+  );
+  animation: light-shaft-sweep 14s ease-in-out infinite;
+}
+
+.shell-music-particles {
+  background-image: radial-gradient(2px 2px at 10% 80%, rgb(167 139 250 / 0.35), transparent),
+    radial-gradient(2px 2px at 35% 60%, rgb(56 189 248 / 0.3), transparent),
+    radial-gradient(1.5px 1.5px at 70% 90%, rgb(250 204 21 / 0.25), transparent);
+  animation: music-particles-float 22s ease-in-out infinite;
+}
+
+@keyframes parallax-drift {
+  0% {
+    transform: translate3d(0, 0, 0);
+  }
+  100% {
+    transform: translate3d(-2%, -1%, 0);
+  }
+}
+
+@keyframes parallax-mist {
+  0% {
+    opacity: 0.5;
+    transform: translateY(0);
+  }
+  100% {
+    opacity: 0.9;
+    transform: translateY(-12px);
+  }
+}
+
+@keyframes light-shaft-sweep {
+  0%,
+  100% {
+    opacity: 0.35;
+    transform: translateX(-8%) skewX(-6deg);
+  }
+  50% {
+    opacity: 0.75;
+    transform: translateX(8%) skewX(6deg);
+  }
+}
+
+@keyframes music-particles-float {
+  0%,
+  100% {
+    transform: translateY(0);
+    opacity: 0.6;
+  }
+  50% {
+    transform: translateY(-24px);
+    opacity: 1;
+  }
+}
+
+/* Micro-interaction buttons */
+.btn-juice {
+  position: relative;
+  overflow: hidden;
+  transition:
+    transform 0.15s ease,
+    box-shadow 0.15s ease,
+    background-color 0.15s ease;
+}
+
+.btn-juice:hover:not(:disabled) {
+  transform: scale(1.02);
+}
+
+.btn-juice:active:not(:disabled) {
+  transform: scale(0.97);
+}
+
+.btn-juice:active:not(:disabled)::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(circle at var(--ripple-x, 50%) var(--ripple-y, 50%), rgb(255 255 255 / 0.35), transparent 55%);
+  animation: btn-ripple 0.45s ease-out forwards;
+  pointer-events: none;
+}
+
+@keyframes btn-ripple {
+  0% {
+    opacity: 0.9;
+    transform: scale(0.2);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(2.5);
+  }
 }

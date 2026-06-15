@@ -2,15 +2,30 @@
  * Offline progression — math abstraction for away-time gold (GDD §1.6, Phase 7.5).
  * Uses 50% of active drip efficiency; caps at 8h (12h with Idle Grandmaster).
  */
-import { calculateTotalExhibitionGoldPerSec, estimateArmyActionsPerSec } from '@/engine/exhibitions'
-import { calculateMetaModifiers } from '@/engine/metaUpgrades'
 import { resolveSupporterOfflineGoldMultiplier } from '@/engine/supporterQoL'
 import {
+  calculateActionIntervalSec,
   calculateGoldAction,
   type ChessPiece,
   type MetaUpgradeState,
   type WavePhase,
 } from '@/types/game'
+
+function estimateArmyActionsPerSec(
+  playerPieces: ChessPiece[],
+  globalSpeedMult: number,
+): number {
+  let actionsPerSec = 0
+  for (const piece of playerPieces) {
+    const interval = calculateActionIntervalSec(
+      piece.initiative.baseIntervalSec,
+      piece.upgradeLevels.initiative,
+      globalSpeedMult,
+    )
+    if (interval > 0) actionsPerSec += 1 / interval
+  }
+  return actionsPerSec
+}
 
 /** GDD offline sim efficiency. */
 export const OFFLINE_COMBAT_EFFICIENCY = 0.5
@@ -70,7 +85,6 @@ export function calculateOfflineGoldGrant(
   const creditedMs = Math.min(input.awayMs, capMs)
   const creditedSec = creditedMs / 1000
 
-  const mods = calculateMetaModifiers(input.metaUpgrades)
   const perAction = calculateGoldAction(
     input.currentStage,
     input.prestigeGoldMult,
@@ -87,13 +101,7 @@ export function calculateOfflineGoldGrant(
       ? perAction * actionsPerSec * OFFLINE_COMBAT_EFFICIENCY
       : 0
 
-  const exhibitionGoldPerSec = calculateTotalExhibitionGoldPerSec(
-    mods.exhibitionRank,
-    input.currentStage,
-    input.playerPieces,
-    input.prestigeGoldMult,
-    input.globalSpeedMult,
-  )
+  const exhibitionGoldPerSec = 0
 
   const supporterMult = resolveSupporterOfflineGoldMultiplier({
     offlineGoldMultiplier: input.supporterOfflineGoldMultiplier ?? false,

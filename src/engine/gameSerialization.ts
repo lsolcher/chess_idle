@@ -7,7 +7,9 @@ import {
   createInitialGameState,
   GAME_SCHEMA_VERSION,
   type GameState,
+  type UnlockedSlotsState,
 } from '@/types/game'
+import { resolveUnlockedSlotsFromMilestones } from '@/engine/pieceShop'
 import { createDefaultEquippedCosmetics } from '@/engine/cosmetics'
 import { normalizePersistedLifetime } from '@/engine/saveMigration'
 import { createEmptyWaveCombatStats } from '@/engine/waveOutcome'
@@ -17,6 +19,10 @@ export const EPHEMERAL_STATE_KEYS = [
   'combatLoopRunning',
   'combatFeedbackEvents',
   'screenShakeUntilMs',
+  'impactFreezeUntilMs',
+  'boardZoomUntilMs',
+  'pieceJuicePulseUntilMs',
+  'armyVictoryGlowBurstUntilMs',
   'lastOfflineGoldGranted',
   'manualPendingPieceId',
   'prepPendingPieceId',
@@ -25,6 +31,39 @@ export const EPHEMERAL_STATE_KEYS = [
 ] as const satisfies readonly (keyof GameState)[]
 
 export type EphemeralStateKey = (typeof EPHEMERAL_STATE_KEYS)[number]
+
+/** Every `GameState` key that must round-trip through save/load (excluding ephemeral session fields). */
+export function listPersistedGameStateKeys(): (keyof GameState)[] {
+  const ephemeral = new Set<string>(EPHEMERAL_STATE_KEYS)
+  const sample = createInitialGameState(0)
+  return (Object.keys(sample) as (keyof GameState)[]).filter((k) => !ephemeral.has(k))
+}
+
+/** Migrates legacy boolean piece unlocks to numeric roster caps. */
+export function normalizeUnlockedSlots(
+  raw: Partial<UnlockedSlotsState> & Record<string, unknown> | undefined,
+  maxStageReached: number,
+): UnlockedSlotsState {
+  const milestone = resolveUnlockedSlotsFromMilestones(maxStageReached)
+  if (!raw) return milestone
+
+  const slotCount = (value: unknown, fallback: number): number => {
+    if (typeof value === 'number' && Number.isFinite(value)) {
+      return Math.max(0, Math.floor(value))
+    }
+    if (value === true) return Math.max(1, fallback)
+    if (value === false) return 0
+    return fallback
+  }
+
+  return {
+    pawn: slotCount(raw.pawn, milestone.pawn),
+    knight: slotCount(raw.knight, milestone.knight),
+    bishop: slotCount(raw.bishop, milestone.bishop),
+    rook: slotCount(raw.rook, milestone.rook),
+    queen: slotCount(raw.queen, milestone.queen),
+  }
+}
 
 /**
  * Combat-relevant subset for authoritative board sync (multiplayer-ready shape).
@@ -81,7 +120,10 @@ export function deserializeGameState(json: string): GameState {
       royalDecree: { ...base.royalDecree, ...parsed.royalDecree },
       achievements: { ...base.achievements, ...parsed.achievements },
       metaUpgrades: { ...base.metaUpgrades, ...parsed.metaUpgrades },
-      unlockedSlots: { ...base.unlockedSlots, ...parsed.unlockedSlots },
+      unlockedSlots: normalizeUnlockedSlots(
+        parsed.unlockedSlots as Partial<UnlockedSlotsState> & Record<string, unknown>,
+        parsed.maxStageReached ?? base.maxStageReached,
+      ),
       lifetime: normalizePersistedLifetime({ ...base, ...parsed } as GameState),
       equippedCosmetics:
         parsed.equippedCosmetics ?? createDefaultEquippedCosmetics(),
@@ -97,6 +139,10 @@ export function deserializeGameState(json: string): GameState {
       enemyPieces: parsed.enemyPieces ?? base.enemyPieces,
       combatFeedbackEvents: [],
       screenShakeUntilMs: 0,
+      impactFreezeUntilMs: 0,
+      boardZoomUntilMs: 0,
+      pieceJuicePulseUntilMs: {},
+      armyVictoryGlowBurstUntilMs: 0,
       lastOfflineGoldGranted: 0,
       combatLoopRunning: false,
       manualPendingPieceId: null,

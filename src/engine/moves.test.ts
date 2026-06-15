@@ -21,6 +21,15 @@ describe('move generation', () => {
     expect(withDecree.some((m) => m.isExtendedStep)).toBe(true)
   })
 
+  it('allows head-on pawn capture when blocked on the same file', () => {
+    const pawn = createPiece('p', 'pawn', 'player', { file: 4, rank: 3 })
+    const enemy = createPiece('e', 'pawn', 'enemy', { file: 4, rank: 4 })
+    const moves = generateLegalMoves(pawn, { allPieces: [pawn, enemy], decreeStepEnabled: false })
+
+    expect(moves.some((m) => m.isCapture && m.to.file === 4 && m.to.rank === 4)).toBe(true)
+    expect(moves.some((m) => !m.isCapture && m.to.rank === 4)).toBe(false)
+  })
+
   it('generates pawn forward and capture moves', () => {
     const pawn = createPiece('p', 'pawn', 'player', { file: 4, rank: 1 })
     const enemy = createPiece('e', 'pawn', 'enemy', { file: 5, rank: 2 })

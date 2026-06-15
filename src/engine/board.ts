@@ -74,6 +74,112 @@ export function getAllPieces(player: ChessPiece[], enemy: ChessPiece[]): ChessPi
   return [...player, ...enemy]
 }
 
+export interface BoardPositionCollision {
+  key: string
+  pieces: ChessPiece[]
+}
+
+/** Groups pieces that share the same board coordinate (root cause of vanishing/jumping sprites). */
+export function findBoardPositionCollisions(
+  playerPieces: ChessPiece[],
+  enemyPieces: ChessPiece[],
+): BoardPositionCollision[] {
+  const byKey = new Map<string, ChessPiece[]>()
+  for (const piece of getAllPieces(playerPieces, enemyPieces)) {
+    const key = coordKey(piece.position)
+    const group = byKey.get(key) ?? []
+    group.push(piece)
+    byKey.set(key, group)
+  }
+  return [...byKey.entries()]
+    .filter(([, pieces]) => pieces.length > 1)
+    .map(([key, pieces]) => ({ key, pieces }))
+}
+
+function collisionKeepPriority(piece: ChessPiece): number {
+  let score = piece.side === 'player' ? 1000 : 0
+  if (piece.kind === 'king') score += 500
+  if (piece.isBoss) score += 200
+  return score
+}
+
+function findNearestVacantSquare(origin: BoardCoord, occupied: Set<string>): BoardCoord | null {
+  if (!occupied.has(coordKey(origin))) {
+    return { ...origin }
+  }
+
+  for (let dist = 1; dist < BOARD_SIZE * 2; dist += 1) {
+    for (let df = -dist; df <= dist; df += 1) {
+      for (let dr = -dist; dr <= dist; dr += 1) {
+        if (Math.abs(df) + Math.abs(dr) !== dist) continue
+        const coord = { file: origin.file + df, rank: origin.rank + dr }
+        if (!isInBounds(coord)) continue
+        const key = coordKey(coord)
+        if (!occupied.has(key)) return coord
+      }
+    }
+  }
+  return null
+}
+
+/**
+ * Ensures every living piece occupies a unique square.
+ * Matches `buildOccupancy` priority: player over enemy; kings/bosses stay put when possible.
+ */
+export function reconcileUniqueBoardPositions(
+  playerPieces: ChessPiece[],
+  enemyPieces: ChessPiece[],
+): { playerPieces: ChessPiece[]; enemyPieces: ChessPiece[] } {
+  let players = playerPieces.map((piece) => ({
+    ...piece,
+    position: { ...piece.position },
+  }))
+  let enemies = enemyPieces.map((piece) => ({
+    ...piece,
+    position: { ...piece.position },
+  }))
+
+  const applyPosition = (pieceId: string, side: ChessPiece['side'], position: BoardCoord) => {
+    if (side === 'player') {
+      players = players.map((piece) =>
+        piece.id === pieceId ? { ...piece, position: { ...position } } : piece,
+      )
+    } else {
+      enemies = enemies.map((piece) =>
+        piece.id === pieceId ? { ...piece, position: { ...position } } : piece,
+      )
+    }
+  }
+
+  const buildOccupied = (): Set<string> =>
+    new Set(getAllPieces(players, enemies).map((piece) => coordKey(piece.position)))
+
+  for (let pass = 0; pass < 32; pass += 1) {
+    const collisions = findBoardPositionCollisions(players, enemies)
+    if (collisions.length === 0) break
+
+    let occupied = buildOccupied()
+
+    for (const { pieces } of collisions) {
+      const sorted = [...pieces].sort(
+        (a, b) => collisionKeepPriority(b) - collisionKeepPriority(a),
+      )
+      const keeper = sorted[0]!
+
+      for (let i = 1; i < sorted.length; i += 1) {
+        const displaced = sorted[i]!
+        const vacant = findNearestVacantSquare(displaced.position, occupied)
+        if (!vacant) continue
+
+        applyPosition(displaced.id, displaced.side, vacant)
+        occupied.add(coordKey(vacant))
+      }
+    }
+  }
+
+  return { playerPieces: players, enemyPieces: enemies }
+}
+
 export function findKing(pieces: ChessPiece[], side: PieceSide): ChessPiece | undefined {
   return pieces.find((piece) => piece.side === side && piece.kind === 'king')
 }

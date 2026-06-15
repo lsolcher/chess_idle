@@ -2,6 +2,47 @@
 
 All notable changes to Idle Chess RPG are documented here ([Keep a Changelog](https://keepachangelog.com/en/1.1.0/)).
 
+## [Unreleased]
+
+### Added
+
+- _(v0.4.0 cycle — High-Fantasy Art Pipeline + Ghost Matchmaking UI.)_
+
+## [0.3.0] - 1.0 RC — 2026-06-09
+
+*Locked release-candidate milestone. Client targets 1.0; save schema remains `0.3.0`.*
+
+### Added
+
+- **Dev mode:** Ctrl+Shift+D cheat panel (gold/Elo, stage jump, heal, roster unlock, max upgrades, clear wave, god mode, free stamina clicks); persisted separately from campaign save (`devStore`).
+- **P0 launch sprint:** Enemy HP soft-cap after stage 50; collision-free wave spawn; Intent Ribbon onboarding overlay; wave lifecycle extracted to `waveLifecycle.ts`; Exhibition boards + Wardrobe UI removed; chess board combat strings i18n (`en`/`de`).
+- **Fantasy Sprite Engine (prep):** `ChessPieceRenderer.vue`, `fantasySprites.ts` 6×2 grid spec, `docs/FANTASY_SPRITE_PIPELINE.md`; glyph fallback via `CHESS_PIECE_RENDER_MODE`.
+- **Chess-first visual lock:** `chessIdentity.ts` silhouette QA; stone checkerboard + piece glide in `fantasy-theme.css`.
+- **Ludological Unification:** Enemy Intent Ribbon, Tempo Bonus, Royal Decree Last Stand, wave tactical patterns, Adaptive AI auto-profile.
+- **Symphonic polish:** Dynamic music layer mixing by stage/prestige; 2s ambient↔boss crossfade; pitch-mapped combat SFX; Grandmaster Phase III tension drone; meta/supporter purchase chimes; prestige chime; tab blur suspends `AudioContext`.
+
+### Fixed
+
+- **Startup board:** Pieces invisible when sprite sheet missing — reverted to Unicode glyphs (`CHESS_PIECE_RENDER_MODE = 'glyph'`).
+- **Onboarding Arm Move:** Hydrate-safe `armOnboardingMove()`; modal dismisses after arming so board stays clickable.
+- **Pawn stare-down:** Head-on pawn vs pawn capture; king flanks behind friendly pawn screen.
+- **Board UI:** Enemy initiative pies; pies hidden in wave prep; selected-piece ring; attackable-enemy pulse; enemy click shows red move dots.
+
+### Changed
+
+- **Store refactor:** `combatStore.ts` + `economyStore.ts`; `gameStore.ts` persistence hub (~1,580 lines, down from ~2,600).
+- **Board pieces:** Unicode chess symbols on 8×8 board (`chessGlyphs.ts`) for stable 1.0 RC play.
+- **Victory glow:** Win-streak CSS glow/sparkle; burst on wave clear; aura banner.
+- **Balance:** Player army HP/AP stage scaling; faster roster milestones; Stage 20 ~34.2 min (headless model).
+- **Docs:** `gdd.md`, `tasks.md`, `README.md` synced for 1.0 RC scope (modular stores, Intent Ribbon, no Exhibition/Wardrobe).
+- **Juice & polish:** Board evolution materials, power auras, parallax shell, impact frames, clash VFX, `btn-juice` micro-interactions.
+
+### Tests
+
+- **378** Vitest tests passing (73 files).
+
+---
+
 ## [0.3.0] — 2026-06-04 — *Arena & Dojo*
 
 ### Added
@@ -24,16 +65,27 @@ All notable changes to Idle Chess RPG are documented here ([Keep a Changelog](ht
 ### Added
 
 - **Phase 11 — Chess Town:** `townStore.ts` + `townBuildings.ts` with Barracks (AP), Academy (initiative speed), Treasury (gold); `ChessTown.vue` top-down town grid; **Town** tab in Upgrades; persists via `idle-chess-rpg-town-v1`.
+- **Final balance pass:** `balanceConstants.ts`, `balanceSimulation.ts`, `docs/BALANCE_PASS.md` — prestige pacing, Arena PC, Dojo/Town tuning, ghost variety.
+
+### Changed
+
+- Economy: stage gold mult **1.14 → 1.12**; enemy HP scaling **1.08 → 1.114** (time-to-prestige ≥30m in headless model).
+- Arena PC: queen-heavy armies cost significantly more than pawn swarms (`ARENA_BASE_PC`).
+- Dojo Hard AI: **3-ply** base search; skill rewards **2 / 3 / 5** per difficulty.
+- Chess Town: **~1% / 1.2%** per-level bonuses (mid-level ≈5–10%, not runaway).
+- Ghost matchmaking prefers mixed unit types when power scores tie.
 
 ### Fixed
 
-- Wave prep no longer auto-starts combat while the clear modal is open; auto-start (if enabled) begins only after **Continue to prep**, not when the wave clears.
-- **Auto-start combat** is off by default — prep stays open for shopping until you press **Start Wave** unless you opt in via the Auto-Advance toggles.
-- **Buy Best ROI** now compares all prep purchases on a unified DPS/gold scale (upgrades, recruits, board slots) and excludes QoL auto-advance from the pick.
+- **Piece shop balance:** Board slot purchases capped by milestone roster size; pawns listed first.
+- **Prep recovery:** army heals **50% of missing HP** between waves; King respawn after fail restores full HP.
+- **Board occupancy:** duplicate coordinates reconciled; Grandmaster spawns respect player squares.
+- Wave prep no longer auto-starts combat while clear modal is open.
+- **Buy Best ROI** unified DPS/gold scale across prep purchases.
 
 ### Tests
 
-- **302** Vitest tests passing (`vue-tsc -b` green).
+- **317** Vitest tests passing (`vue-tsc -b` green).
 
 ---
 

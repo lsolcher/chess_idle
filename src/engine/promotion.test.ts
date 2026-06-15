@@ -54,15 +54,26 @@ describe('promotion engine', () => {
     expect(promoted.promoted).toBe(true)
   })
 
-  it('locks super-queen until stage 45', () => {
+  it('locks super-queen until stage 38', () => {
     expect(getAvailablePromotionForms(20)).not.toContain('super-queen')
-    expect(getAvailablePromotionForms(45)).toContain('super-queen')
+    expect(getAvailablePromotionForms(38)).toContain('super-queen')
   })
 
   it('scales streak gold up to 25% at cap 5', () => {
     expect(getPromotionStreakGoldMult(0)).toBe(1)
     expect(getPromotionStreakGoldMult(5)).toBe(1.25)
     expect(getPromotionStreakGoldMult(10)).toBe(1.25)
+  })
+
+  it('prefers bishop or knight over rook on an empty board before stage 45', () => {
+    const pawn = createPiece('p', 'pawn', 'player', { file: 4, rank: 7 })
+    const pick = selectAutoPromotionForm(
+      pawn,
+      ['super-knight', 'super-bishop', 'super-rook'],
+      [],
+      0,
+    )
+    expect(pick).not.toBe('super-rook')
   })
 
   it('prefers super-queen when unlocked and respects carry hint', () => {
@@ -76,6 +87,15 @@ describe('promotion engine', () => {
       0,
     )
     expect(queenPick).toBe('super-queen')
+
+    const stage37 = selectAutoPromotionForm(
+      pawn,
+      getAvailablePromotionForms(37),
+      [],
+      0,
+    )
+    expect(getAvailablePromotionForms(37)).not.toContain('super-queen')
+    expect(stage37).not.toBe('super-queen')
 
     const hinted = selectAutoPromotionForm(
       pawn,

@@ -7,26 +7,41 @@
 ## Shipped scope
 
 ### Phase 9 — Multiplayer prep
-- [x] `pvpMath.ts` / `pvpNormalization.ts` + tests
-- [x] `ArenaLoadout.vue` + `arenaLoadout.ts`
-- [x] Ghost export `exportArmySnapshotFromPieces`
+
+- `pvpMath.ts` / `pvpNormalization.ts` + tests
+- `ArenaLoadout.vue` + `arenaLoadout.ts`
+- Ghost export `exportArmySnapshotFromPieces`
 
 ### Phase 9.5 — Chess Dojo
-- [x] `chessDojo.ts` + `dojoSession.ts` + tests
-- [x] `metaStore` Dojo progression
-- [x] `ChessDojo.vue` + `ChessBoard` overlay modes
+
+- `chessDojo.ts` + `dojoSession.ts` + tests
+- `metaStore` Dojo progression
+- `ChessDojo.vue` + `ChessBoard` overlay modes
 
 ### Phase 10 — Supporter QoL
-- [x] `SupporterStore.vue`
-- [x] `purchaseConvenienceUpgrade` + offline / auto-shop / combat log wiring
-- [x] `supporterQoL.ts` + `persistMetaReader` (no `metaStore` ↔ `persistConfig` cycle)
+
+- `SupporterStore.vue`
+- `purchaseConvenienceUpgrade` + offline / auto-shop / combat log wiring
+- `supporterQoL.ts` + `persistMetaReader` (no `metaStore` ↔ `persistConfig` cycle)
 
 ### Versioning & docs
-- [x] `src/version.ts`, `CHANGELOG.md`, `README.md`, `persistMigration.ts`
-- [x] UI header shows `v0.3.0 (Arena & Dojo)`
+
+- `src/version.ts`, `CHANGELOG.md`, `README.md`, `persistMigration.ts`
+- UI header shows `v0.3.0 (Arena & Dojo)`
+
+## Post-ship polish (living board)
+
+- **Dev mode** — `devStore` + `DevModePanel.vue`; Ctrl+Shift+D; cheats persisted under `idle-chess-rpg-dev-v1` (not campaign save).
+- **Chess-first** — `chessIdentity.ts` + `ChessPieceRenderer.vue` (Unicode silhouettes); fantasy board frame defers to 8×8 grid; no faction sprites on board.
+- Board evolution materials + piece power auras (`aestheticProgression.ts`, `ChessBoard.vue`)
+- Shell parallax / music-layer atmosphere (`GameShell.vue`, `musicLayers.ts`)
+- Impact frames + clash VFX (`combatFeedback.ts`, combat loop freeze)
+- Strategy-suite UI + `btn-juice` (`cosmetics.ts`, Arena/Dojo/Upgrade/Supporter)
 
 ## Next (0.4+ roadmap)
 
-- Phase 11: Chess Town (`townStore`, `ChessTown.vue`)
+- Phase 11: Chess Town (`townStore`, `ChessTown.vue`) — **shipped in 0.3**
+- Phase 12: Visual Identity: Optional theme overlays with stripes
 - Live PvP / ghost matchmaking UI (beyond local DB)
 - Optional real payment bridge for Supporter Club (currently ethical unlock stub)
+

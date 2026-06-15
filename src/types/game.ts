@@ -11,6 +11,7 @@ import {
 } from '@/engine/cosmetics'
 import type { EquippedCosmetics } from '@/engine/cosmetics'
 import type { CombatFeedbackEvent } from '@/engine/combatFeedback'
+import { STAGE_GOLD_MULT_BASE } from '@/engine/balanceConstants'
 import { GAME_SCHEMA_VERSION } from '@/version'
 
 /** Standard chess piece kinds (includes King as deployable roster member). */
@@ -43,7 +44,6 @@ export type MetaUpgradeId =
   | 'tablebaseMemory'
   | 'grandmasterInstinct'
   | 'boardExpansion'
-  | 'simultaneousExhibitions'
   | 'immortalGame'
   | 'enPassantEconomy'
   | 'deepClock'
@@ -72,18 +72,15 @@ export type CombatFocus = 'strike' | 'move'
 /** @deprecated Use WavePhase — kept for save migration if needed. */
 export type StagePhase = 'deploy' | 'combat' | 'clear' | 'fail'
 
-/** Player auto-play strategy (GDD §1.6 / §1.4). */
-export type AutoAiPersonality = 'aggressive' | 'defensive' | 'protectKing'
+/** Player auto-play strategy — adaptive scales with Elo (Ludological Unification). */
+export type AutoAiPersonality = 'adaptive' | 'aggressive' | 'defensive' | 'protectKing'
 
-/** Maps legacy save values to current strategies. */
+/** Maps legacy save values to adaptive profile. */
 export function normalizeAutoAiPersonality(
   value: string | undefined | null,
 ): AutoAiPersonality {
-  if (value === 'aggressive' || value === 'defensive' || value === 'protectKing') {
-    return value
-  }
-  if (value === 'farmer') return 'aggressive'
-  return 'defensive'
+  if (value === 'adaptive') return 'adaptive'
+  return 'adaptive'
 }
 
 export function normalizeCombatFocus(
@@ -180,13 +177,18 @@ export interface ChessPiece {
   pvpValue?: number
 }
 
+export type RoyalDecreeMode = 'full' | 'lastStand' | 'inactive'
+
 /**
- * Royal Decree solo-King rule (GDD §1.2).
- * `permanentlyExpired` latches true once a second friendly piece is deployed.
+ * Royal Decree solo-King rule (GDD §1.2) + Last Stand recovery.
+ * `armyBuilt` latches once a second friendly piece deploys; solo King can re-enter Last Stand.
  */
 export interface RoyalDecreeState {
   isActive: boolean
-  permanentlyExpired: boolean
+  armyBuilt: boolean
+  mode: RoyalDecreeMode
+  /** @deprecated Migrated to `armyBuilt` on load. */
+  permanentlyExpired?: boolean
 }
 
 export interface CurrencyState {
@@ -225,12 +227,13 @@ export interface AchievementFlags {
   tempoTyrant: boolean
 }
 
+/** Milestone roster caps per piece kind (chess-style counts; king always +1 deploy). */
 export interface UnlockedSlotsState {
   pawn: number
-  knight: boolean
-  bishop: boolean
-  rook: boolean
-  queen: boolean
+  knight: number
+  bishop: number
+  rook: number
+  queen: number
 }
 
 export interface PendingPromotionState {
@@ -244,6 +247,10 @@ export interface LifetimeStats {
   lifetimeGoldEarned: number
   totalUpgradesBought: number
   totalPrestiges: number
+  /** Total waves cleared across all runs (persists through prestige). */
+  lifetimeWavesCleared: number
+  /** One-time Intent Ribbon / tempo tutorial completed. */
+  onboardingTelegraphComplete?: boolean
 }
 
 /** Cosmetic-only gradual progression toggles (Themes tab — Phase 8.6). */
@@ -330,6 +337,10 @@ export interface GameState {
   exhibitionLastTickMs: number
   /** Lifetime exhibition gold this session (UI telemetry). */
   exhibitionGoldEarned: number
+  /** Enemy ids telegraphed on the Intent Ribbon (refreshed each combat tick). */
+  telegraphedEnemyIds: string[]
+  /** Applied on the player's next initiative schedule after a tempo bonus (< 1 = faster). */
+  playerTempoHasteMult: number
   /** Latches true after first prestige — unlocks meta tree UI. */
   hasPrestigedOnce: boolean
   /** Whether the event-driven combat loop is running. */
@@ -364,6 +375,14 @@ export interface GameState {
   combatFeedbackEvents: CombatFeedbackEvent[]
   /** Wall-clock ms until screen shake CSS stops. */
   screenShakeUntilMs: number
+  /** Brief combat freeze for impact frames (not persisted). */
+  impactFreezeUntilMs: number
+  /** Board zoom juice window (not persisted). */
+  boardZoomUntilMs: number
+  /** Piece id → ms until level-up pulse animation ends. */
+  pieceJuicePulseUntilMs: Record<string, number>
+  /** Brief army sparkle burst after a wave clear (not persisted). */
+  armyVictoryGlowBurstUntilMs: number
   /** One-shot toast after offline catch-up (session only). */
   lastOfflineGoldGranted: number
   /** Cross-run progression for cosmetics & achievements. */
@@ -421,7 +440,7 @@ export const PROMOTION_STREAK_CAP = 5
 export const PROMOTION_STREAK_GOLD_BONUS = 0.05
 export const PROMOTION_FANFARE_CAPTURE_MULT = 3
 export const PROMOTION_MASTERY_STAT_BONUS = 0.1
-export const QUEEN_PROMOTION_UNLOCK_STAGE = 45
+export const QUEEN_PROMOTION_UNLOCK_STAGE = 38
 export const PROMOTION_BLOCK_MIN_STAGE = 11
 export const INI_REDUCTION_PER_LEVEL = 0.08
 export const INI_MAX_REDUCTION = 0.6
@@ -458,7 +477,7 @@ export const PIECE_DEFINITIONS: Record<PieceKind, PieceDefinition> = {
   },
   knight: {
     kind: 'knight',
-    unlockStage: 10,
+    unlockStage: 8,
     tier: 2,
     baseHp: 45,
     baseAp: 12,
@@ -468,7 +487,7 @@ export const PIECE_DEFINITIONS: Record<PieceKind, PieceDefinition> = {
   },
   bishop: {
     kind: 'bishop',
-    unlockStage: 15,
+    unlockStage: 12,
     tier: 2,
     baseHp: 40,
     baseAp: 11,
@@ -478,7 +497,7 @@ export const PIECE_DEFINITIONS: Record<PieceKind, PieceDefinition> = {
   },
   rook: {
     kind: 'rook',
-    unlockStage: 30,
+    unlockStage: 24,
     tier: 3,
     baseHp: 70,
     baseAp: 18,
@@ -488,7 +507,7 @@ export const PIECE_DEFINITIONS: Record<PieceKind, PieceDefinition> = {
   },
   queen: {
     kind: 'queen',
-    unlockStage: 45,
+    unlockStage: 38,
     tier: 4,
     baseHp: 55,
     baseAp: 22,
@@ -529,12 +548,6 @@ export const META_UPGRADE_DEFINITIONS: MetaUpgradeDefinition[] = [
   { id: 'tablebaseMemory', eloCostPerRank: 2, maxRank: 10, label: 'Tablebase Memory' },
   { id: 'grandmasterInstinct', eloCostPerRank: 5, maxRank: 3, label: 'Grandmaster Instinct' },
   { id: 'boardExpansion', eloCostPerRank: 8, maxRank: 2, label: 'Board Expansion' },
-  {
-    id: 'simultaneousExhibitions',
-    eloCostPerRank: 12,
-    maxRank: 3,
-    label: 'Simultaneous Exhibitions',
-  },
   { id: 'immortalGame', eloCostPerRank: 15, maxRank: 1, label: 'Immortal Game' },
   { id: 'enPassantEconomy', eloCostPerRank: 10, maxRank: 5, label: 'En Passant Economy' },
   { id: 'deepClock', eloCostPerRank: 6, maxRank: 1, label: 'Deep Clock (+30s boss)' },
@@ -609,10 +622,10 @@ export function calculateActiveMult(comboCount: number): number {
   )
 }
 
-/** Stage gold multiplier: `1.14^(stage - 1)` (GDD §2.2). */
+/** Stage gold multiplier: `STAGE_GOLD_MULT_BASE^(stage - 1)` (GDD §2.2). */
 export function calculateStageGoldMult(stage: number): number {
   const safeStage = Math.max(1, stage)
-  return 1.14 ** (safeStage - 1)
+  return STAGE_GOLD_MULT_BASE ** (safeStage - 1)
 }
 
 /**
@@ -685,16 +698,20 @@ export function countPlayerPieces(pieces: ChessPiece[]): number {
  * active when exactly one friendly piece exists (the King), and not permanently expired.
  */
 export function evaluateRoyalDecree(playerPieces: ChessPiece[], decree: RoyalDecreeState): RoyalDecreeState {
-  if (decree.permanentlyExpired) {
-    return { isActive: false, permanentlyExpired: true }
-  }
+  const armyBuilt =
+    decree.armyBuilt ??
+    Boolean(decree.permanentlyExpired)
   const playerCount = countPlayerPieces(playerPieces)
   const soloKing =
     playerCount === 1 && playerPieces.some((p) => p.side === 'player' && p.kind === 'king')
-  return {
-    isActive: soloKing,
-    permanentlyExpired: false,
+
+  if (!soloKing) {
+    return { isActive: false, armyBuilt, mode: 'inactive' }
   }
+  if (!armyBuilt) {
+    return { isActive: true, armyBuilt: false, mode: 'full' }
+  }
+  return { isActive: true, armyBuilt: true, mode: 'lastStand' }
 }
 
 /**
@@ -706,13 +723,14 @@ export function registerPlayerPiece(
   newPiece: ChessPiece,
 ): { pieces: ChessPiece[]; decree: RoyalDecreeState } {
   const pieces = [...playerPieces, newPiece]
-  if (countPlayerPieces(pieces) > 1 && !decree.permanentlyExpired) {
-    return {
-      pieces,
-      decree: { isActive: false, permanentlyExpired: true },
-    }
+  const armyBuilt =
+    decree.armyBuilt ||
+    Boolean(decree.permanentlyExpired) ||
+    countPlayerPieces(pieces) > 1
+  return {
+    pieces,
+    decree: evaluateRoyalDecree(pieces, { ...decree, armyBuilt }),
   }
-  return { pieces, decree: evaluateRoyalDecree(pieces, decree) }
 }
 
 /** Stamina regen per second; doubled under Royal Decree (GDD §1.2). */
@@ -786,10 +804,11 @@ export function createInitialGameState(nowMs = Date.now()): GameState {
     combo: { count: 0, lastActionAtMs: nowMs },
     stamina: { current: STAMINA_MAX, max: STAMINA_MAX },
     promotion: { streak: 0, masteryLevel: 0 },
-    royalDecree: { isActive: true, permanentlyExpired: false },
+    royalDecree: { isActive: true, armyBuilt: false, mode: 'full' },
+    autoAiPersonality: 'adaptive',
     playerPieces: [king],
     enemyPieces: [],
-    unlockedSlots: { pawn: 1, knight: false, bishop: false, rook: false, queen: false },
+    unlockedSlots: { pawn: 1, knight: 0, bishop: 0, rook: 0, queen: 0 },
     deploySlots: 2,
     metaUpgrades: createDefaultMetaUpgrades(),
     achievements: {
@@ -809,7 +828,6 @@ export function createInitialGameState(nowMs = Date.now()): GameState {
     prestigeGoldMult: 1,
     clickPowerLevel: 1,
     autoAiTier: 0,
-    autoAiPersonality: 'defensive',
     studyPackActive: false,
     immortalGameUsedThisStage: false,
     enPassantEconomyRank: 0,
@@ -821,6 +839,8 @@ export function createInitialGameState(nowMs = Date.now()): GameState {
     clickCombatReadyAtMs: nowMs,
     exhibitionLastTickMs: nowMs,
     exhibitionGoldEarned: 0,
+    telegraphedEnemyIds: [],
+    playerTempoHasteMult: 1,
     hasPrestigedOnce: false,
     combatLoopRunning: false,
     pendingPromotion: null,
@@ -838,6 +858,10 @@ export function createInitialGameState(nowMs = Date.now()): GameState {
     waveOutcomeReport: null,
     combatFeedbackEvents: [],
     screenShakeUntilMs: 0,
+    impactFreezeUntilMs: 0,
+    boardZoomUntilMs: 0,
+    pieceJuicePulseUntilMs: {},
+    armyVictoryGlowBurstUntilMs: 0,
     lastOfflineGoldGranted: 0,
     lifetime: createDefaultLifetimeStats(1),
     equippedCosmetics: createDefaultEquippedCosmetics(),
@@ -860,7 +884,7 @@ export function runTypeModelSanityCheck(): { passed: boolean; messages: string[]
 
   const pawn = createPiece('player-pawn-0', 'pawn', 'player', { file: 4, rank: 1 })
   const registered = registerPlayerPiece(state.playerPieces, state.royalDecree, pawn)
-  assert('second piece expires decree permanently', registered.decree.permanentlyExpired)
+  assert('second piece latches army built', registered.decree.armyBuilt)
   assert('decree inactive after deploy', !registered.decree.isActive)
 
   const intervalL10 = calculateActionIntervalSec(2.4, 10, 1)

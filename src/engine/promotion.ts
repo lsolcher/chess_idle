@@ -68,7 +68,7 @@ export function shouldDelayPromotionOnBlock(
   return isPromotionBlockSquare(coord, stage)
 }
 
-/** Forms available this stage — Super-Queen locked until stage 45. */
+/** Forms available this stage — Super-Queen locked until queen roster milestone. */
 export function getAvailablePromotionForms(stage: number): SuperPromotionForm[] {
   const forms: SuperPromotionForm[] = ['super-knight', 'super-bishop', 'super-rook']
   if (stage >= QUEEN_PROMOTION_UNLOCK_STAGE) {
@@ -124,22 +124,28 @@ export function selectAutoPromotionForm(
 
   for (const form of forms) {
     const projected = projectSuperStats(pawn, form, masteryLevel)
-    let score = projected.ap * 1.2 + projected.maxHp * 0.5
+    // Rook has the highest HP mult — down-weight raw stats so it is not the default.
+    let score =
+      form === 'super-rook'
+        ? projected.ap * 1.1 + projected.maxHp * 0.38
+        : projected.ap * 1.2 + projected.maxHp * 0.5
 
     switch (form) {
       case 'super-queen':
-        score += 8 + swarm * 1.5 + enemiesOnBackRank * 2
+        // Default carry when unlocked (stage 45+); scales with board pressure.
+        score += 14 + swarm * 1.5 + enemiesOnBackRank * 2
         break
       case 'super-bishop':
-        score += swarm >= 3 ? 5 : 2
+        score += swarm >= 3 ? 6 : 4
         break
       case 'super-knight':
-        score += enemiesOnBackRank > 0 ? 6 : 1
+        score += enemiesOnBackRank > 0 ? 7 : 3
         if (heavyPieces >= 2) score += 2
         break
       case 'super-rook':
-        score += heavyPieces >= 2 ? 3 : -4
-        if (swarm <= 2) score -= 2
+        // Only favor rook vs queen when the enemy line is heavy and crowded.
+        if (heavyPieces >= 2 && swarm >= 4) score += 10
+        else score -= 12
         break
       default:
         break
@@ -335,8 +341,8 @@ export function runPromotionEngineSanityCheck(): { passed: boolean; messages: st
   const afterHold = resolvePromotionForPiece(held, { ...ctx, stage: 15 }, [])
   assert('promotes after hold tick', afterHold.promoted)
 
-  assert('queen locked before stage 45', !getAvailablePromotionForms(10).includes('super-queen'))
-  assert('queen unlocked at stage 45', getAvailablePromotionForms(45).includes('super-queen'))
+  assert('queen locked before stage 38', !getAvailablePromotionForms(10).includes('super-queen'))
+  assert('queen unlocked at stage 38', getAvailablePromotionForms(38).includes('super-queen'))
 
   return { passed, messages }
 }

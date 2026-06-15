@@ -216,7 +216,7 @@ function onStartWave(): void {
           {{ t('waveOutcome.continuePrep') }}
         </button>
         <button
-          v-if="report.kind === 'victory' && store.canStartWave"
+          v-if="report.kind === 'victory'"
           type="button"
           class="flex-1 rounded-lg border border-emerald-600/50 bg-slate-950/80 px-4 py-2.5 text-sm font-semibold text-emerald-200 hover:bg-slate-800"
           @click="onStartWave"

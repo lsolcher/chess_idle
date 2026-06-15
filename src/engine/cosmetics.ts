@@ -154,6 +154,7 @@ export function createDefaultLifetimeStats(
     lifetimeGoldEarned: 0,
     totalUpgradesBought: 0,
     totalPrestiges: 0,
+    lifetimeWavesCleared: 0,
   }
 }
 
@@ -260,6 +261,23 @@ const FALLBACK_THEME: ResolvedCosmeticTheme = {
 }
 
 /** Resolves equipped ids into Tailwind class strings for UI binding. */
+/** High-end strategy tab chrome derived from the equipped wardrobe theme. */
+export function getStrategySuiteClasses(theme: ResolvedCosmeticTheme): {
+  panel: string
+  panelHeader: string
+  rosterItem: string
+  primaryButton: string
+} {
+  return {
+    panel: `${theme.shell} border border-slate-700/80 bg-slate-900/75 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)] backdrop-blur-sm ring-1 ring-white/5`,
+    panelHeader: 'text-slate-300 tracking-widest uppercase text-sm font-semibold',
+    rosterItem:
+      'border border-slate-700/60 bg-slate-900/50 transition hover:border-slate-500/50 hover:bg-slate-800/60',
+    primaryButton:
+      'btn-juice bg-gradient-to-r from-sky-600 to-cyan-600 text-white shadow-md shadow-cyan-900/30 hover:from-sky-500 hover:to-cyan-500',
+  }
+}
+
 export function resolveCosmeticTheme(
   equipped: EquippedCosmetics,
   lifetime: LifetimeStats,

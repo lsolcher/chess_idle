@@ -2,7 +2,13 @@
  * Boss signature mechanics and phase-shift hooks (GDD §3.2).
  * Called from combat ticks after enemy actions and during damage resolution.
  */
-import { coordKey, findKing, getAllPieces, type BoardCoord } from '@/engine/board'
+import {
+  coordKey,
+  findKing,
+  getAllPieces,
+  reconcileUniqueBoardPositions,
+  type BoardCoord,
+} from '@/engine/board'
 import { bootstrapPieceInitiative } from '@/engine/initiative'
 import {
   applyGrandmasterCheckmatePhaseSkip,
@@ -152,7 +158,7 @@ export function tickBossMechanics(
     for (const threshold of BOSS_PHASE_THRESHOLDS) {
       if (hpRatio <= threshold && !nextRuntime.phasesTriggered.includes(threshold)) {
         nextRuntime.phasesTriggered.push(threshold)
-        enemies = spawnPhaseAdds(enemies, stage, nowMs, globalSpeedMult, 2)
+        enemies = spawnPhaseAdds(enemies, players, stage, nowMs, globalSpeedMult, 2)
       }
     }
   }
@@ -170,8 +176,12 @@ export function tickBossMechanics(
   }
 
   if (runtime.identity === 'grandmaster' && nextRuntime.enemyActionCount % 15 === 0) {
-    enemies = spawnPhaseAdds(enemies, stage, nowMs, globalSpeedMult, 2)
+    enemies = spawnPhaseAdds(enemies, players, stage, nowMs, globalSpeedMult, 2)
   }
+
+  const reconciled = reconcileUniqueBoardPositions(players, enemies)
+  players = reconciled.playerPieces
+  enemies = reconciled.enemyPieces
 
   nextRuntime.bishopPairShieldActive =
     runtime.identity === 'bishopPair' &&
@@ -237,12 +247,15 @@ function buffEnemyAp(enemies: ChessPiece[], pct: number): ChessPiece[] {
 
 function spawnPhaseAdds(
   enemies: ChessPiece[],
+  playerPieces: ChessPiece[],
   stage: number,
   nowMs: number,
   globalSpeedMult: number,
   count: number,
 ): ChessPiece[] {
-  const occupied = new Set(enemies.map((p) => coordKey(p.position)))
+  const occupied = new Set(
+    getAllPieces(playerPieces, enemies).map((p) => coordKey(p.position)),
+  )
   const adds: ChessPiece[] = []
   for (let i = 0; i < count; i += 1) {
     let placed: BoardCoord | null = null

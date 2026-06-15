@@ -286,8 +286,25 @@ export function loadGhostArmy(id: string): GhostArmyRecord | null {
   return readGhostBag().find((r) => r.id === id) ?? null
 }
 
+/** Unique piece kinds in a ghost roster (King excluded from variety tally). */
+export function countGhostArmyVariety(snapshot: ArmySnapshot): number {
+  const kinds = new Set<PieceKind>()
+  for (const piece of snapshot.pieces) {
+    if (piece.kind !== 'king') kinds.add(piece.kind)
+  }
+  return kinds.size
+}
+
+function ghostMatchScore(record: GhostArmyRecord, targetPower: number): number {
+  const powerDelta = Math.abs(record.snapshot.powerScore - targetPower)
+  const variety = countGhostArmyVariety(record.snapshot)
+  /** Prefer mixed armies over pawn-only blobs at similar power. */
+  return powerDelta * 10 - variety * 25
+}
+
 /**
  * Picks a ghost roster near the target power score (±25% band).
+ * Tie-breaks toward higher unit variety (discourages all-pawn exports).
  */
 export function selectGhostOpponent(
   targetPower: number,
@@ -301,9 +318,7 @@ export function selectGhostOpponent(
   )
   const pool = inBand.length > 0 ? inBand : records
   const sorted = [...pool].sort(
-    (a, b) =>
-      Math.abs(a.snapshot.powerScore - targetPower) -
-      Math.abs(b.snapshot.powerScore - targetPower),
+    (a, b) => ghostMatchScore(a, targetPower) - ghostMatchScore(b, targetPower),
   )
   return sorted[0] ?? null
 }

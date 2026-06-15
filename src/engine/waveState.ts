@@ -33,23 +33,71 @@ export function isWaveCombatFrozen(phase: WavePhase): boolean {
 
 
 
-/** Full heal all friendly pieces between waves (safe room). */
+/** Default share of missing HP restored in prep when no bonus increases it. */
 
-export function healPlayerPiecesForPrep(pieces: ChessPiece[]): ChessPiece[] {
+export const PREP_MISSING_HP_RECOVERY_BASE = 0.5
 
-  return pieces.map((piece) => ({
 
-    ...piece,
 
-    stats: {
+export interface PrepHealOptions {
 
-      ...piece.stats,
+  /** 0–1 fraction of missing HP to restore (meta/town bonuses may raise this). */
 
-      hp: piece.stats.maxHp,
+  missingHpRecoveryFraction?: number
 
-    },
+}
 
-  }))
+
+
+/** Partial heal between waves — restores a fraction of missing HP per piece. */
+
+export function healPlayerPiecesForPrep(
+
+  pieces: ChessPiece[],
+
+  options: PrepHealOptions = {},
+
+): ChessPiece[] {
+
+  const fraction = Math.min(
+
+    1,
+
+    Math.max(0, options.missingHpRecoveryFraction ?? PREP_MISSING_HP_RECOVERY_BASE),
+
+  )
+
+
+
+  return pieces.map((piece) => {
+
+    const missing = Math.max(0, piece.stats.maxHp - piece.stats.hp)
+
+    if (missing <= 0 || fraction <= 0) return piece
+
+
+
+    const healAmount = Math.floor(missing * fraction)
+
+    if (healAmount <= 0) return piece
+
+
+
+    return {
+
+      ...piece,
+
+      stats: {
+
+        ...piece.stats,
+
+        hp: Math.min(piece.stats.maxHp, piece.stats.hp + healAmount),
+
+      },
+
+    }
+
+  })
 
 }
 
@@ -263,12 +311,14 @@ export function restorePlayerKingForPrep(
     existing ??
     createPiece('player-king-0', 'king', 'player', { ...PLAYER_KING_DEPLOY })
 
+  const needsFullRestore = !existing || existing.stats.hp <= 0
+
   const restored: ChessPiece = {
     ...king,
     position: { ...PLAYER_KING_DEPLOY },
     stats: {
       ...king.stats,
-      hp: king.stats.maxHp,
+      hp: needsFullRestore ? king.stats.maxHp : existing!.stats.hp,
     },
   }
 

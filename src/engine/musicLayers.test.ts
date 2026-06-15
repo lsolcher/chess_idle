@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest'
-import { getUnlockedMusicLayers, MUSIC_LAYER_UNLOCK_TABLE } from '@/engine/musicLayers'
+import {
+  computeDynamicLayerGain,
+  getUnlockedMusicLayers,
+  MUSIC_LAYER_UNLOCK_TABLE,
+} from '@/engine/musicLayers'
 
 describe('musicLayers', () => {
   it('always includes base layer', () => {
@@ -20,5 +24,9 @@ describe('musicLayers', () => {
 
   it('documents twelve layers in unlock table', () => {
     expect(MUSIC_LAYER_UNLOCK_TABLE.length).toBe(12)
+  })
+
+  it('returns neutral gain for non-profile layers', () => {
+    expect(computeDynamicLayerGain('percussion', 50, 2)).toBe(1)
   })
 })

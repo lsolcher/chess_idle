@@ -2,7 +2,12 @@
  * Meta-upgrade aggregation and purchase rules (GDD §2.5).
  * Modifiers stack additively per rank on their stated bases.
  */
-import { BASE_DEPLOY_SLOTS } from '@/engine/pieceShop'
+import {
+  BASE_DEPLOY_SLOTS,
+  clampDeploySlotsToRoster,
+  computeMaxDeploySlotsFromRoster,
+} from '@/engine/pieceShop'
+import { PREP_MISSING_HP_RECOVERY_BASE } from '@/engine/waveState'
 import {
   mergeTownBonuses,
   NEUTRAL_TOWN_BONUSES,
@@ -34,6 +39,8 @@ export interface MetaModifiers {
   enPassantCarryPct: number
   /** Deep Clock — extra boss-wave time (ms total). */
   bossTimerExtensionMs: number
+  /** Share of missing HP restored when entering prep between waves (0–1). */
+  prepMissingHpRecoveryFraction: number
 }
 
 /**
@@ -46,7 +53,6 @@ export function calculateMetaModifiers(meta: MetaUpgradeState): MetaModifiers {
   const tablebase = meta.tablebaseMemory ?? 0
   const instinct = meta.grandmasterInstinct ?? 0
   const expansion = meta.boardExpansion ?? 0
-  const exhibitions = meta.simultaneousExhibitions ?? 0
   const immortal = meta.immortalGame ?? 0
   const enPassant = meta.enPassantEconomy ?? 0
 
@@ -57,10 +63,11 @@ export function calculateMetaModifiers(meta: MetaUpgradeState): MetaModifiers {
     aiScoreMult: 1 + 0.1 * tablebase,
     bonusPawnsOnReset: instinct,
     bonusDeploySlots: expansion,
-    exhibitionRank: exhibitions,
+    exhibitionRank: 0,
     hasImmortalGame: immortal >= 1,
     enPassantCarryPct: 0.25 * enPassant,
     bossTimerExtensionMs: (meta.deepClock ?? 0) > 0 ? 30_000 : 0,
+    prepMissingHpRecoveryFraction: PREP_MISSING_HP_RECOVERY_BASE,
   }
 }
 
@@ -146,12 +153,6 @@ function describeMetaEffect(id: MetaUpgradeId, nextRank: number, _mods: MetaModi
       return `+${nextRank} starting pawn(s) on prestige reset`
     case 'boardExpansion':
       return `+${nextRank} deploy slot(s)`
-    case 'simultaneousExhibitions':
-      return nextRank === 1
-        ? 'Board B @ 50% gold'
-        : nextRank === 2
-          ? 'Board B @ 65% gold'
-          : 'Board C @ 40% gold'
     case 'immortalGame':
       return 'Once per stage: revive at 30% HP'
     case 'enPassantEconomy':
@@ -175,8 +176,12 @@ export function applyMetaModifiersToState(
   state.globalSpeedMult = mods.globalSpeedMult
   state.enPassantEconomyRank = state.metaUpgrades.enPassantEconomy ?? 0
 
-  const metaFloor = BASE_DEPLOY_SLOTS + mods.bonusDeploySlots
-  state.deploySlots = Math.min(8, Math.max(state.deploySlots, metaFloor))
+  const rosterCap = computeMaxDeploySlotsFromRoster(state.unlockedSlots)
+  const metaFloor = Math.min(BASE_DEPLOY_SLOTS + mods.bonusDeploySlots, rosterCap)
+  state.deploySlots = clampDeploySlotsToRoster(
+    Math.max(state.deploySlots, metaFloor),
+    state.unlockedSlots,
+  )
 }
 
 /** Ensures meta object has every node key (save migration). */

@@ -28,7 +28,7 @@ function upgradeEffect(id: ConvenienceUpgradeId): string {
 function onPurchase(id: ConvenienceUpgradeId): void {
   if (meta.purchaseConvenienceUpgrade(id)) {
     void audio.unlockFromGesture()
-    audio.playSfx('capture')
+    audio.playSupporterPurchaseChime()
   }
 }
 
@@ -57,7 +57,7 @@ function dismissThankYou(): void {
       {{ thankYouMessage }}
       <button
         type="button"
-        class="mt-2 block text-xs font-semibold text-emerald-300 underline hover:text-emerald-200"
+        class="btn-juice mt-2 block text-xs font-semibold text-emerald-300 underline hover:text-emerald-200"
         @click="dismissThankYou"
       >
         {{ t('supporterStore.dismissThanks') }}
@@ -87,7 +87,7 @@ function dismissThankYou(): void {
         <button
           v-else
           type="button"
-          class="shrink-0 rounded-lg bg-fuchsia-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-fuchsia-500 active:scale-[0.98]"
+          class="btn-juice shrink-0 rounded-lg bg-fuchsia-600 px-4 py-2 text-sm font-semibold text-white hover:bg-fuchsia-500"
           @click="onPurchase(offer.id)"
         >
           {{ t('supporterStore.unlock') }}

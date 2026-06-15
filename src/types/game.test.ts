@@ -28,22 +28,23 @@ describe('game types & balance helpers', () => {
     expect(state.playerPieces).toHaveLength(1)
     expect(state.playerPieces[0]?.kind).toBe('king')
     expect(state.royalDecree.isActive).toBe(true)
-    expect(state.royalDecree.permanentlyExpired).toBe(false)
+    expect(state.royalDecree.armyBuilt).toBe(false)
+    expect(state.royalDecree.mode).toBe('full')
   })
 
-  it('expires Royal Decree permanently when second player piece is registered', () => {
+  it('latches army built and enables last stand when returning to solo king', () => {
     const state = createInitialGameState()
     const pawn = createPiece('pawn-1', 'pawn', 'player', { file: 3, rank: 1 })
     const result = registerPlayerPiece(state.playerPieces, state.royalDecree, pawn)
 
     expect(countPlayerPieces(result.pieces)).toBe(2)
-    expect(result.decree.permanentlyExpired).toBe(true)
+    expect(result.decree.armyBuilt).toBe(true)
     expect(result.decree.isActive).toBe(false)
 
     const kingOnly = [state.playerPieces[0]!]
     const reeval = evaluateRoyalDecree(kingOnly, result.decree)
-    expect(reeval.isActive).toBe(false)
-    expect(reeval.permanentlyExpired).toBe(true)
+    expect(reeval.isActive).toBe(true)
+    expect(reeval.mode).toBe('lastStand')
   })
 
   it('matches GDD upgrade cost example: pawn AP level 10 ≈ 352 gold', () => {
@@ -84,7 +85,7 @@ describe('game types & balance helpers', () => {
 
   it('computes stage gold multiplier', () => {
     expect(calculateStageGoldMult(1)).toBe(1)
-    expect(calculateStageGoldMult(10)).toBeCloseTo(1.14 ** 9, 5)
+    expect(calculateStageGoldMult(10)).toBeCloseTo(1.12 ** 9, 5)
   })
 
   it('never divides by zero in gold action calc', () => {

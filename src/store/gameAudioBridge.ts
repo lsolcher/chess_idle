@@ -1,6 +1,7 @@
 /**
  * Thin bridge so gameStore actions can fire SFX without duplicating Pinia guards.
  */
+import type { CombatFeedbackEvent } from '@/engine/combatFeedback'
 import { useAudioStore } from '@/store/audioStore'
 import type { SfxId } from '@/engine/proceduralAudio'
 
@@ -12,12 +13,17 @@ export function playGameSfx(id: SfxId): void {
   }
 }
 
-export function playCombatFeedbackAudio(kinds: string[]): void {
+export function playCombatFeedbackAudio(events: CombatFeedbackEvent[]): void {
   try {
-    const audio = useAudioStore()
-    for (const kind of kinds) {
-      audio.playFeedback(kind)
-    }
+    useAudioStore().playCombatFeedbackEvents(events)
+  } catch {
+    // Pinia not active.
+  }
+}
+
+export function playPrestigeChimeAudio(): void {
+  try {
+    useAudioStore().playPrestigeChime()
   } catch {
     // Pinia not active.
   }

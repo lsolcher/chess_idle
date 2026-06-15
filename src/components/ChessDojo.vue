@@ -9,6 +9,7 @@ import {
 } from '@/engine/chessDojo'
 import { checkDojoOutcome, createTrainingBoard } from '@/engine/dojoSession'
 import { DOJO_SKILL_REWARD } from '@/store/metaStore'
+import type { DojoModuleId } from '@/engine/wavePatterns'
 import type { BoardMove } from '@/engine/moves'
 import { t } from '@/i18n'
 import { useGameStore } from '@/store'
@@ -19,8 +20,18 @@ const game = useGameStore()
 const meta = useMetaStore()
 const audio = useAudioStore()
 
+const suite = computed(() => game.strategySuiteClasses)
+
 const difficulties: DojoDifficulty[] = ['easy', 'medium', 'hard']
 const difficulty = ref<DojoDifficulty>('medium')
+const activeModule = ref<DojoModuleId | null>(null)
+
+const dojoModuleIds: DojoModuleId[] = [
+  'knightDefense',
+  'pawnWallBreak',
+  'bishopDiagonal',
+  'rookSiege',
+]
 
 const board = ref<Board>(createTrainingBoard())
 const selectedPieceId = ref<string | null>(null)
@@ -85,6 +96,9 @@ function handleOutcome(outcome: 'player-win' | 'ai-win'): void {
   selectedPieceId.value = null
   if (outcome === 'player-win') {
     const granted = meta.dojoVictory(difficulty.value)
+    if (activeModule.value) {
+      meta.completeDojoModule(activeModule.value)
+    }
     lastReward.value = granted
     statusMessage.value = t('chessDojo.victory', { points: granted })
     audio.playSfx('capture')
@@ -181,7 +195,7 @@ watch(difficulty, () => {
 <template>
   <div class="space-y-4 px-3 py-4 sm:px-4">
     <header
-      class="rounded-xl border border-indigo-500/30 bg-gradient-to-br from-indigo-950/80 to-slate-900/90 p-4"
+      class="rounded-xl border border-indigo-500/40 bg-gradient-to-br from-indigo-950/85 via-slate-900/90 to-slate-950 p-4 shadow-lg shadow-indigo-950/25 ring-1 ring-indigo-400/15"
     >
       <div class="flex flex-wrap items-start justify-between gap-3">
         <div>
@@ -212,7 +226,7 @@ watch(difficulty, () => {
           v-for="tier in difficulties"
           :key="tier"
           type="button"
-          class="rounded-lg px-3 py-1.5 text-xs font-semibold capitalize transition"
+          class="btn-juice rounded-lg px-3 py-1.5 text-xs font-semibold capitalize"
           :class="
             difficulty === tier
               ? 'bg-indigo-600 text-white ring-2 ring-indigo-300/60'
@@ -229,6 +243,34 @@ watch(difficulty, () => {
         {{ t('chessDojo.winRewardPreview', { points: rewardPreview }) }}
         · {{ t('chessDojo.trainingRecord', { total: meta.totalDojoVictories }) }}
       </p>
+
+      <div class="mt-4">
+        <p class="text-[10px] font-semibold uppercase tracking-wide text-slate-500">
+          {{ t('chessDojo.modulesTitle') }}
+        </p>
+        <p class="mt-0.5 text-[10px] text-slate-500">{{ t('chessDojo.modulesHint') }}</p>
+        <div class="mt-2 flex flex-wrap gap-2">
+          <button
+            v-for="modId in dojoModuleIds"
+            :key="modId"
+            type="button"
+            class="btn-juice rounded-lg px-2.5 py-1 text-[10px] font-semibold"
+            :class="
+              activeModule === modId
+                ? 'bg-amber-600 text-white ring-1 ring-amber-300/60'
+                : meta.hasDojoModule(modId)
+                  ? 'bg-emerald-900/50 text-emerald-200'
+                  : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
+            "
+            @click="activeModule = activeModule === modId ? null : modId"
+          >
+            {{ t(`chessDojo.modules.${modId}`) }}
+            <span v-if="meta.hasDojoModule(modId)" class="ml-1 opacity-80">
+              ({{ t('chessDojo.moduleComplete') }})
+            </span>
+          </button>
+        </div>
+      </div>
     </header>
 
     <div class="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
@@ -238,7 +280,7 @@ watch(difficulty, () => {
         <div class="mt-3 flex flex-wrap items-center gap-2">
           <button
             type="button"
-            class="rounded-lg bg-slate-700 px-4 py-2 text-xs font-semibold text-slate-100 hover:bg-slate-600"
+            class="btn-juice rounded-lg bg-slate-700 px-4 py-2 text-xs font-semibold text-slate-100 hover:bg-slate-600"
             @click="resetMatch"
           >
             {{ t('chessDojo.newMatch') }}
@@ -254,12 +296,13 @@ watch(difficulty, () => {
       </div>
 
       <aside
-        class="rounded-xl border border-slate-800 bg-slate-900/60 p-4"
+        class="rounded-xl p-4"
+        :class="suite.panel"
         aria-labelledby="dojo-shop-heading"
       >
         <h3
           id="dojo-shop-heading"
-          class="text-sm font-semibold uppercase tracking-wide text-slate-400"
+          :class="suite.panelHeader"
         >
           {{ t('chessDojo.shopTitle') }}
         </h3>
@@ -281,7 +324,7 @@ watch(difficulty, () => {
             </div>
             <button
               type="button"
-              class="shrink-0 rounded-lg px-4 py-2 text-sm font-semibold transition active:scale-[0.98]"
+              class="btn-juice shrink-0 rounded-lg px-4 py-2 text-sm font-semibold"
               :class="
                 offer.maxed
                   ? 'cursor-default bg-slate-800/80 text-slate-500'

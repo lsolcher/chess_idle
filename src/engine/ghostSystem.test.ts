@@ -6,6 +6,7 @@ import {
   importArmySnapshot,
   parseArmySnapshot,
   saveGhostArmy,
+  countGhostArmyVariety,
   selectGhostOpponent,
   serializeArmySnapshot,
 } from '@/engine/ghostSystem'
@@ -77,6 +78,31 @@ describe('ghostSystem', () => {
 
     const pick = selectGhostOpponent(high.powerScore)
     expect(pick?.snapshot.powerScore).toBe(high.powerScore)
+  })
+
+  it('prefers higher unit variety when power scores match', () => {
+    const pawnState = createInitialGameState(0)
+    for (let i = 0; i < 4; i++) {
+      pawnState.playerPieces.push(
+        createPiece(`pp${i}`, 'pawn', 'player', { file: i, rank: 1 }),
+      )
+    }
+    const mixedState = createInitialGameState(0)
+    mixedState.playerPieces.push(
+      createPiece('n1', 'knight', 'player', { file: 1, rank: 1 }),
+      createPiece('b1', 'bishop', 'player', { file: 2, rank: 1 }),
+    )
+    const pawnSnap = exportArmySnapshot(pawnState, 0)
+    const mixedSnap = exportArmySnapshot(mixedState, 0)
+    mixedSnap.powerScore = pawnSnap.powerScore
+
+    saveGhostArmy(pawnSnap, 'pawn-blob')
+    saveGhostArmy(mixedSnap, 'mixed-army')
+
+    expect(countGhostArmyVariety(mixedSnap)).toBeGreaterThan(
+      countGhostArmyVariety(pawnSnap),
+    )
+    expect(selectGhostOpponent(pawnSnap.powerScore)?.label).toBe('mixed-army')
   })
 })
 

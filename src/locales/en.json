@@ -70,6 +70,15 @@
     "victory": "Victory! +{points} Skill Points.",
     "defeat": "Your King fell. Train again!",
     "stalemate": "Draw — no legal moves. Reset to continue.",
+    "modulesTitle": "Wave counter modules",
+    "modulesHint": "Win a match while a module is selected to unlock +15% AP vs that wave pattern.",
+    "moduleComplete": "Complete",
+    "modules": {
+      "knightDefense": "Knight Defense",
+      "pawnWallBreak": "Pawn Wall Break",
+      "bishopDiagonal": "Diagonal Counter",
+      "rookSiege": "Rook Siege"
+    },
     "upgrades": {
       "deepThought": {
         "label": "Deep Thought",
@@ -134,5 +143,102 @@
     "checkpoint": "Checkpoint: wave {stage}",
     "failSoft": "Retry at {pct}% enemy HP (fail ×{count})",
     "failRewind": "Returned to milestone wave {stage}"
+  },
+  "victoryGlow": {
+    "banner": "Army aura: {label} · {waves} wins · backdrop: {backdrop}",
+    "backdropWorn": "worn",
+    "backdropRising": "rising",
+    "backdropTriumphant": "triumphant",
+    "warm": "warm gleam",
+    "bright": "bright glow",
+    "shimmer": "shimmer",
+    "radiant": "radiant",
+    "blazing": "blazing",
+    "champion": "champion sparkle"
+  },
+  "chessBoard": {
+    "title": "Chessboard",
+    "arenaTitle": "Arena Preview",
+    "dojoTitle": "Dojo Board",
+    "skipTurn": "Skip Turn",
+    "strike": "Strike",
+    "move": "Move",
+    "mode": "Mode: {mode}",
+    "modeAuto": "AUTO",
+    "modeManual": "MANUAL",
+    "prepReposition": "Tap a violet square to reposition",
+    "prepFormation": "Tap your pieces to set formation (ranks 1–2)",
+    "strikeArmedStamina": "Strike armed — tap an enemy ({current}/{max} stamina)",
+    "strikeNeedStamina": "Strike armed — need more stamina",
+    "strikeRechargingResume": "Strike recharging when combat resumes",
+    "strikeRechargingSec": "Strike recharging ({sec}s)",
+    "noLegalMoves": "No legal moves — use Skip Turn below",
+    "moveArmed": "Move armed — tap a sky square or enemy you can capture",
+    "clockPaused": "Clock paused until you act",
+    "yourTurnDual": "Your turn — use Move to play a piece, or Strike to chip enemies",
+    "enemyTurn": "Enemy turn — resolving move…",
+    "strikeBetweenTurns": "Strike armed — tap enemies between turns",
+    "waitingInitiative": "Waiting for next initiative tick…",
+    "autoStrikeHint": "Auto moves pieces — Strike armed for tap damage",
+    "promotionBlock": "Shaded = promotion block"
+  },
+  "onboarding": {
+    "title": "Read the threat",
+    "body": "The enemy Rook is about to strike! Block it with your Pawn to earn a Tempo Bonus.",
+    "intentHint": "Watch the Intent Ribbon — telegraphed enemies are highlighted in red.",
+    "telegraphedRook": "Next threat: Enemy Rook ({eta})",
+    "actionHint": "Arm Move, then tap your Pawn onto the square that interrupts the Rook.",
+    "armMove": "Arm Move",
+    "armedHint": "Move armed — tap the highlighted square with your Pawn (●) to block the Rook."
+  },
+  "intentRibbon": {
+    "title": "Threat timeline",
+    "now": "Now",
+    "tempoHint": "Manual capture or chip on a telegraphed enemy before it acts → Tempo Bonus (−5% next move delay).",
+    "countered": "Dojo counter active",
+    "playerTurn": "Your {kind}",
+    "enemy": {
+      "strike": "Enemy strike",
+      "advance": "Enemy advance",
+      "capture_setup": "Enemy setup",
+      "boss": "Boss action"
+    }
+  },
+  "wavePattern": {
+    "procedural": "Standard wave",
+    "knight_rush": "Knight Rush",
+    "pawn_wall": "Pawn Wall",
+    "bishop_diagonal": "Diagonal Siege",
+    "rook_siege": "Rook Siege"
+  },
+  "combatFooter": {
+    "adaptiveAi": "Adaptive AI · {profile}"
+  },
+  "devMode": {
+    "title": "Dev mode",
+    "hint": "Ctrl+Shift+D to toggle. Cheats affect this save only.",
+    "prodWarning": "Production build — use a test save.",
+    "close": "Close dev panel",
+    "status": "Stage {stage} · {phase}",
+    "godMode": "God mode",
+    "godModeOn": "On — you one-shot enemies; enemies cannot hurt you",
+    "godModeOff": "Off",
+    "jumpStage": "Jump to stage",
+    "jump": "Go",
+    "disable": "Disable dev mode",
+    "cheats": {
+      "addGold10k": "+10k gold",
+      "addGold100k": "+100k gold",
+      "addElo100": "+100 Elo shards",
+      "healArmy": "Heal army",
+      "refillStamina": "Refill stamina",
+      "maxUpgrades": "Max piece upgrades",
+      "maxClickPower": "Max click power",
+      "unlockRoster": "Unlock full roster",
+      "advanceStage": "Stage +1 (prep)",
+      "completeWave": "Clear wave",
+      "enterPrep": "Force prep",
+      "startWave": "Start wave"
+    }
   }
 }

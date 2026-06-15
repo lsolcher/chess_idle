@@ -13,10 +13,21 @@ export function useGameAudio(): void {
     audio.syncMusicMode({
       wavePhase: game.wavePhase,
       isBossStage: game.isCurrentStageBoss,
+      currentStage: game.currentStage,
       maxStageEver: game.lifetime.maxStageEverReached,
       totalPrestiges: game.lifetime.totalPrestiges,
       musicLayersEnabled: game.aestheticPreferences.musicLayers,
     })
+  }
+
+  function syncGrandmasterDrone(): void {
+    const mods = game.grandmasterCombatModifiers
+    const bossAlive = game.enemyPieces.some(
+      (p) => p.isBoss && p.kind === 'king' && p.stats.hp > 0,
+    )
+    audio.syncGrandmasterTension(
+      bossAlive && mods.phase === 3 && game.wavePhase === 'WAVE_ACTIVE',
+    )
   }
 
   watch(
@@ -27,16 +38,22 @@ export function useGameAudio(): void {
       game.lifetime.maxStageEverReached,
       game.lifetime.totalPrestiges,
       game.aestheticPreferences.musicLayers,
+      game.grandmasterCombatModifiers.phase,
+      game.enemyPieces.map((p) => `${p.id}:${p.stats.hp}`).join('|'),
       audio.muted,
       audio.unlocked,
     ],
-    syncMusic,
+    () => {
+      syncMusic()
+      syncGrandmasterDrone()
+    },
     { immediate: true },
   )
 
   const onFirstPointer = (): void => {
     void audio.unlockFromGesture()
     syncMusic()
+    syncGrandmasterDrone()
   }
 
   onMounted(() => {

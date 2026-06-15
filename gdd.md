@@ -1,7 +1,7 @@
 # Idle Chess RPG — Game Design Document
 
 **Working Title:** Idle Chess RPG  
-**Version:** 0.2.1 (implementation)  
+**Version:** 1.0.0-rc (architecture) · implementation schema `0.3.0`  
 **Genre:** Idle / Incremental / Clicker / Strategy  
 **Platform:** Web / Mobile (TBD)  
 **Session Target:** 5–30 min active; 24h passive catch-up viable  
@@ -17,6 +17,20 @@
 | **Soft Walls** | Progress slows; never fully stops — prestige and idle farm break plateaus |
 | **Piece Identity** | Each piece type has a distinct combat role, not just stat tiers |
 | **Meaningful Resets** | Prestige feels like "earning Elo," not punishment |
+| **One Board, One Crisis** | Single wave-combat focus — prep, fight, prestige; Arena loadout for async PvP prep |
+| **Tactical Clock** | **Systemic Pivot (v1.0):** Intent Ribbon + Tempo Bonus — read the initiative queue, answer telegraphed threats |
+
+### v1.0 Core Tactical Hook — Systemic Pivot
+
+Idle Chess is not just incremental stats on a chess board. The **Systemic Pivot** makes **initiative order** the primary tactical read:
+
+| System | Player fantasy | Implementation |
+|--------|----------------|----------------|
+| **Enemy Intent Ribbon** | “What hits next?” | Threat timeline shows the **next 3** global actors during `WAVE_ACTIVE` (`enemyIntent.ts`, `ChessBoard.vue`) |
+| **Tempo Bonus** | “I answered the clock.” | Manual capture or chip on a **telegraphed** enemy before it acts → **−5%** on the player’s next initiative interval (`TEMPO_INITIATIVE_MULT = 0.95`) |
+| **Dojo bridge** | “I trained for this pattern.” | Wave counter modules grant **+15% AP** vs matching wave patterns (Knight Rush, Pawn Wall, etc.) |
+
+Together, these shift optimization from raw DPS toward **answering the initiative clock** — the defining skill loop for v1.0.
 
 ---
 
@@ -59,6 +73,63 @@ OnMoveAttack(attacker, target):
 
 ---
 
+### 1.1a Game Modes
+
+**Core fantasy:** You play **chess** — legal moves on an 8×8 board — but combat is **HP-based** and **initiative-driven**, not instant capture. In single-player you fight **waves of bots** that grow tougher as stages advance; you **upgrade your pieces** with Gold while enemies scale HP/AP on the same curve. In the **Chess Dojo** you spar against AI that gets **harder by tier** (Easy → Hard + Deep Thought), so your tactical reading improves alongside your account.
+
+Multiplayer reuses the **same combat engine**. Matches are **not** standard chess openings: each player **drafts a custom army** from unlocked piece types and places it on **their deploy zone** (ranks 0–1) before the initiative clock starts — a **randomized mix** of pawns, minors, and (when unlocked) queen/rook, constrained only by the **point budget**. Opponents do the same. **Post-1.0:** live queues pair players by **PvP Elo** (separate from prestige Elo Shards); until then, Arena loadout + local ghost DB support practice.
+
+#### Single-Player (Wave Campaign)
+
+| Aspect | Detail |
+|--------|--------|
+| **Opponent** | Procedural enemy waves + milestone bosses; composition follows **wave patterns** (Knight Rush, Pawn Wall, etc.) |
+| **Progression** | Gold → piece/stat upgrades; promotions → super-pieces; prestige → Elo Shards |
+| **Training bridge** | Dojo **counter modules** grant +15% AP vs. the pattern they teach |
+| **Tactical HUD** | **Enemy Intent Ribbon** — next 3 initiative actors; Tempo Bonus for answering telegraphed threats (§1.5) |
+
+#### Ranked Mode (Fair Play)
+
+**Audience:** Competitive players — **skill and draft only**, not single-player grind advantages inside the match.
+
+| Rule | Detail |
+|------|--------|
+| **Point cap** | Fixed **1,000 PC** for both players (`ARENA_POINT_CAP`, `pvpMath.ts`) |
+| **Stat normalization** | **`pvpNormalization.ts`** clamps upgrade levels to a season baseline — no importing maxed SP piece stats into combat |
+| **Skill-only focus** | No Royal Decree, Immortal Game, prestige combat passives, or run Gold buffs **in the match**; outcome = deploy draft + initiative play |
+| **Roster access** | All piece **types** in the builder; **PC budget** limits how many and how upgraded each piece can be |
+| **Matchmaking** | **PvP Elo** pairing (target post-1.0); wins/losses adjust rating only in Ranked |
+| **Deploy** | Custom army on friendly half — not a standard chess start position |
+
+#### Unranked Mode (Flex)
+
+**Audience:** Players who want **classic incremental reward** — more time in SP/Dojo/Town → stronger armies in MP.
+
+| Rule | Detail |
+|------|--------|
+| **Point cap** | Scales with **SP progression**: `Cap ≈ 800 + 12 × maxStageEverReached + floor(lifetimeGold / 500_000)` (soft cap ~3,000–4,000 endgame) |
+| **Full stat import** | Live upgrade levels, super-promotions, and meta modifiers feed **PC and combat** — rewards long-term investment |
+| **Matchmaking** | Casual / friendly queue; optional friend codes; **no PvP Elo** impact |
+| **Fantasy beat** | Large upgraded armies vs. similarly invested opponents — high-stakes brawls, not normalized fairness |
+
+**Prep (both MP modes):** Arena Tactical Loadout (`ArenaLoadout.vue`) — deploy on ranks 0–1, live PC total vs. cap, ghost export for local/async opponents until live servers ship (§9).
+
+---
+
+### 1.1b Account Progression Loop (v1.0)
+
+Three **persistent** advancement paths complement the run-scoped Gold loop:
+
+| Track | Currency | Source | Sink / Effect |
+|-------|----------|--------|----------------|
+| **Prestige meta** | **Elo Shards** | Manual prestige (Stage 20+) | Global meta tree — Gold%, AP%, initiative speed, Immortal Game, En Passant Economy, deploy slots |
+| **Tactical training** | **Skill Points** | Chess Dojo wins (Easy/Med/Hard) | Dojo upgrades (AI depth, SP bonuses) + **wave counter modules** (+15% AP vs. matching wave pattern when module complete) |
+| **Meta-base** | **Skill Points** + **Elo Shards** | Same as above | Chess Town — Barracks (AP%), Academy (initiative speed%), Treasury (gold%); construction timers; persists across prestige |
+
+**Run-scoped (resets on prestige):** Gold, stage depth, piece upgrade levels, current army layout.
+
+---
+
 ### 1.2 Royal Decree — Solo King Start
 
 **Problem:** A lone King can be mated, pinned, or stalemated under standard constraints — bad for Stage 1–5 onboarding.
@@ -71,14 +142,16 @@ OnMoveAttack(attacker, target):
 | **Royal Strike** | Any move that lands on an enemy deals **2× AP**; captures grant **2× Gold burst** |
 | **Check Immunity (Solo)** | Enemy pieces cannot deliver **checkmate** while Decree is active; at most **check** (King always retains one legal escape square, algorithmically guaranteed in wave gen) |
 | **Decree Stamina** | King gains **+100% click stamina regen** while solo |
-| **Falloff** | Royal Decree **deactivates permanently for the current run** once a second friendly piece is deployed |
+| **Army built** | Deploying a **second** friendly piece ends **Full Decree** for that run (`armyBuilt` latches) |
+| **Last Stand** | If the army is wiped back to **solo King** after `armyBuilt`, **Last Stand** activates: ~**30%** of Full Decree combat power (1.3× AP/gold), **2×** stamina regen, checkmate immunity — **no** decree-step |
 
 **Wave Gen Constraint (Stages 1–5):** Enemy spawns use **"Decree-Safe" layouts** — no pre-built mating nets; max 2 attackers on King at once.
 
 **Strategic depth:**
 
 - Players can **delay** unlocking Pawn #2 briefly to farm Decree bonuses (higher risk, higher burst Gold).
-- First Pawn deploy is a **meaningful decision**: lose Decree mobility, gain DPS and initiative layering.
+- First Pawn deploy is a **meaningful decision**: lose Full Decree mobility, gain army tempo and initiative layering.
+- **Last Stand** restores comeback agency after catastrophic losses without returning to onboarding power.
 - King remains **high-value** late-game via aura (+5% team AP), not via solo carry.
 
 ---
@@ -210,6 +283,8 @@ Effect: −8% interval per level (cap −60% at L10 before prestige mods)
 
 **Turn order visualization:** Circular progress rings on board + **Turn order** sidebar (all combatants sorted by `nextActionAtMs`). Active actor marked “Now”; manual player turns show “Your move” with frozen clocks until a square is chosen.
 
+**Enemy Intent Ribbon (v1.0):** Above the board during `WAVE_ACTIVE`, the **Threat timeline** shows the **next 3** global initiative actors (`buildIntentTimeline` / `getNextReadyActor` order). Telegraphed enemies are highlighted. **Tempo Bonus:** a **manual** capture or chip on a telegraphed enemy **before** it acts grants **−5%** delay on the player's **next** initiative schedule (`TEMPO_INITIATIVE_MULT = 0.95`). Shifts optimization from raw DPS to **answering the clock**.
+
 ---
 
 ### 1.6 Idle / Auto-Play AI Heuristic
@@ -233,7 +308,7 @@ Score(move) =
 
 **Tie-break:** prefer highest **piece value trade** (Queen > Rook > … > Pawn).
 
-**Player auto strategies:** Defensive / Aggressive / Protect King (see §1.4). Enemy AI remains capture-first + back-rank march.
+**Player auto-play (v1.0):** Single **Adaptive AI** profile — heuristic personality scales with **Elo Shards** and `maxStageReached` (`adaptiveAI.ts`); no manual strategy picker. Enemy AI remains capture-first + back-rank march.
 
 **Super-Piece override:** Promoted pawns use **form-specific weights** (e.g., Super-Rook +2.0 line capture bias).
 
@@ -301,7 +376,7 @@ Stats scale per piece level: `Stat(L) = BaseStat × 1.12^(L-1)` (HP/AP/DEF). INI
 GoldAction = BaseDrip × StageGoldMult × PrestigeGoldMult × ActiveMult × (1 + 0.02 × friendlyActionsThisStage)
 
 BaseDrip = 2 + (Stage × 0.15)
-StageGoldMult = 1.14^(Stage - 1)
+StageGoldMult = 1.12^(Stage - 1)
 ```
 
 **Capture Burst:**
@@ -380,21 +455,8 @@ Minimum E = 1 if MaxStageReached ≥ 20
 | Tablebase Memory | Auto-AI +10% score accuracy | 2 | 10 |
 | Grandmaster Instinct | +1 starting Pawn on reset | 5 | 3 |
 | Board Expansion | +1 deploy slot | 8 | 2 |
-| **Simultaneous Exhibitions** | **+1 parallel board (50% Gold each)** | **12** | **3** |
 | **Immortal Game** | **Once per stage: revived piece at 30% HP on death** | **15** | **1** |
 | **En Passant Economy** | **Promoted Super-Pieces retain 25% stats into next stage** | **10** | **5** |
-
-#### Simultaneous Exhibitions (Multi-Board Farming)
-
-| Rank | Unlock | Effect |
-|------|--------|--------|
-| 1 | 12 E | **Board B** fights Stage `max(1, current − 5)` at **50% Gold** |
-| 2 | 24 E | Board B at **65% Gold** |
-| 3 | 40 E | **Board C** added at **40% Gold** (same stage offset) |
-
-- Primary board = full rewards + progression.
-- Side boards use **simplified auto-only** armies (mirror unlocked roster).
-- Side boards run at **0.5× initiative resolution rate** (visual optional, numbers real).
 
 #### Immortal Game (Piece Revival)
 
@@ -411,7 +473,47 @@ Minimum E = 1 if MaxStageReached ≥ 20
 
 ---
 
-### 2.6 Economy Loop Diagram
+### 2.6 Progression Loop (v1.0)
+
+The game advances on **three persistent pillars** plus one **run-scoped** loop:
+
+| Pillar | Currency | Role |
+|--------|----------|------|
+| **Prestige (Elo Shards)** | Elo Shards | Reset run for permanent **meta tree** combat/economy % (Opening Theory, Time Control, Immortal Game, etc.) |
+| **Dojo (Skill Points)** | Skill Points | Train vs. rising AI tiers; buy Dojo ranks + **wave counter modules** |
+| **Town (meta-sink)** | Skill Points + Elo Shards | **Chess Town** buildings — Barracks / Academy / Treasury (% AP, initiative speed, gold); persists across prestige |
+| **Run (Gold)** | Gold | Stage push, piece upgrades, shop — **resets on prestige** |
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│  WAVE COMBAT (primary) — Gold, stage, promotions, prestige     │
+└────────────────────────────┬────────────────────────────────────┘
+                             │
+         ┌───────────────────┼───────────────────┐
+         ▼                   ▼                   ▼
+  ┌─────────────┐    ┌─────────────┐    ┌─────────────┐
+  │ Elo Shards  │    │ Skill Points│    │  Trophies   │
+  │ (Prestige)  │    │ (Dojo)      │    │ (Bosses)    │
+  └──────┬──────┘    └──────┬──────┘    └─────────────┘
+         │                  │
+         ▼                  ├──────────────────┐
+  ┌─────────────┐           ▼                  ▼
+  │ Meta tree   │    ┌─────────────┐    ┌─────────────┐
+  │ (combat %)  │    │ Dojo shop   │    │ Chess Town  │
+  └─────────────┘    │ + modules   │    │ (meta-sink) │
+                     └─────────────┘    └─────────────┘
+                             │
+                             ▼
+                    ┌─────────────────┐
+                    │ MP: Ranked (skill)│  Unranked (power) │
+                    └─────────────────┘
+```
+
+- **Elo Shards (Prestige):** Earned on manual prestige (Stage 20+); spent on the global meta tree — **not** used as PvP matchmaking rating.
+- **Skill Points (Dojo):** Earned from Dojo wins; spent on AI depth, SP bonuses, and **Chess Town** (with Elo Shards).
+- **Chess Town (meta-sink):** Long-term account growth — small % bonuses that stack over many sessions; complements prestige without replacing skill in Ranked.
+
+### 2.7 Economy Loop Diagram
 
 ```
         ┌──────────────┐
@@ -441,7 +543,11 @@ Minimum E = 1 if MaxStageReached ≥ 20
 
 ## 3. Progression Milestones & Bosses
 
-### 3.1 First 50 Stages — Roadmap
+### 3.1 First 50 Stages — Roadmap (v1.0 scope)
+
+**v1.0 ships:** Full single-player loop through Stage 50+ (endless scaling), all milestone bosses, prestige at Stage 20+, Chess Dojo + Town + Arena prep, Intent Ribbon / Tempo Bonus, modular Pinia stores (`gameStore` hub + `combatStore` + `economyStore`). **Post-1.0:** live PvP matchmaking.
+
+**Headless balance (auto-play model, `balance-report.txt`):** Stage 20 (first prestige) **~34.2 min**; meets ≥30 min minimum; design target ~40 min.
 
 | Stage Band | Theme | New Unlock | Enemy Composition | Notes |
 |------------|-------|------------|-------------------|-------|
@@ -502,10 +608,13 @@ Minimum E = 1 if MaxStageReached ≥ 20
 ### 3.3 Stage Difficulty Scaling
 
 ```
-EnemyHP(stage, piece) = BaseHP[piece] × 1.08^(stage - 1) × BossMult
-EnemyAP(stage) = BaseAP × 1.06^(stage - 1)
+EnemyHP(stage, piece) = BaseHP[piece] × 1.114^(stage - 1) × BossMult
+EnemyAP(stage) = BaseAP × 1.055^(stage - 1)
+PlayerHP/AP(stage) ≈ same curves at 1.112 / 1.054 (keeps army near enemy power)
 WaveCount(stage) = 2 + floor(stage / 8)
 ```
+
+Constants: `balanceConstants.ts` (`ENEMY_HP_STAGE_GROWTH`, `ENEMY_AP_STAGE_GROWTH`, `STAGE_GOLD_MULT_BASE = 1.12`).
 
 **Anti-wall:** If player fails stage 3×, grant **"Study Pack"**: +25% Gold for that stage only.
 
@@ -577,7 +686,7 @@ Reward: +3% Super-Piece stat mult (cap 30%)
 | **Upgrade Panel** | Secondary | Next affordable upgrade highlighted green |
 | **Meta Tree** | Modal / slide-over | Prestige only; node graph with Elo costs |
 | **Bottom Bar** | Always visible | Auto toggle, combo, stamina, Gold/sec breakdown |
-| **Multi-board tabs** | When unlocked | Primary + Exhibition B/C split income |
+| **Threat timeline** | Combat | Next 3 initiative actors (Intent Ribbon) |
 
 **Mobile:** Board top 55%; upgrades bottom sheet swipe-up.
 
@@ -602,7 +711,7 @@ Reward: +3% Super-Piece stat mult (cap 30%)
 | **Wave fail** | Fail SFX + shake; **King fallen** alert in wave panel |
 | **Stage clear** | Board wipe blur; confetti as chess symbols |
 | **Prestige** | Board folds into book; Elo counter rolls up |
-| **Exhibition board clear** | Smaller confetti; distinct coin SFX |
+| **Tempo bonus** | Telegraph interrupt — faster next player initiative |
 
 ---
 
@@ -619,13 +728,13 @@ Reward: +3% Super-Piece stat mult (cap 30%)
 
 ### 6.1 Target Curves
 
-| Metric | Target |
-|--------|--------|
-| Time to Stage 10 | 15–25 min first run |
-| First prestige window | Stage 20–28 (~45–90 min) |
-| Post-prestige Stage 10 | 8–12 min |
-| Idle parity | ~40–60% of active Gold/h at same stage |
-| Boss retry rate | ≤30% players need 3+ tries on milestone bosses |
+| Metric | Target | Verified (headless) |
+|--------|--------|---------------------|
+| Time to Stage 10 | 15–25 min first run | — |
+| First prestige window | Stage 20 (~30–40 min) | **~34.2 min** (`balanceSimulation.ts`) |
+| Post-prestige Stage 10 | 8–12 min | — |
+| Idle parity | ~40–60% of active Gold/h at same stage | 50% offline drip |
+| Boss retry rate | ≤30% players need 3+ tries on milestone bosses | Manual playtest TBD |
 
 ### 6.2 Wall Mitigation Toolkit
 
@@ -635,25 +744,28 @@ Reward: +3% Super-Piece stat mult (cap 30%)
 | Fail HP reduction (80%) | Every fail |
 | Offline farm cap | Always |
 | Prestige Elo | Stage 20+ |
-| Simultaneous Exhibitions | Post-prestige idle |
 | En Passant Economy carry | Promotion builds |
 | Immortal Game | Boss safety net |
 | Achievement permanent buffs | Mid/late |
 
 ### 6.3 Key Tuning Knobs (Live Ops)
 
-| Knob | Range |
-|------|-------|
-| StageGoldMult base | 1.12 – 1.16 |
-| Upgrade growth | 1.12 – 1.18 |
-| Enemy HP growth | 1.06 – 1.10 |
-| INI per-level reduction | 6% – 10% |
-| ActiveMult cap | 2.5 – 3.5 |
-| Super-Piece AP mult | 2.2× – 3.5× |
-| Exhibition Gold share | 40% – 65% |
-| Decree solo Gold mult | 1.5× – 2.5× (burst only) |
-| Offline efficiency | 0.4 – 0.6 |
-| Elo formula divisor | 0.8e6 – 1.2e6 |
+**Shipped values** (`balanceConstants.ts`, verified `node scripts/balance-sim.js`):
+
+| Knob | Shipped | Allowed range (live ops) |
+|------|---------|--------------------------|
+| `STAGE_GOLD_MULT_BASE` | **1.12** | 1.12 – 1.16 |
+| Enemy HP stage growth | **1.114** | 1.10 – 1.12 |
+| Enemy AP stage growth | **1.055** | 1.05 – 1.08 |
+| Player HP / AP stage growth | **1.112 / 1.054** | tune with enemy curves |
+| Upgrade growth (piece stats) | **1.12** | 1.12 – 1.18 |
+| INI per-level reduction | **8%** | 6% – 10% |
+| ActiveMult cap | **3.0×** (combo 15) | 2.5 – 3.5 |
+| Super-Piece AP mult | **2.2× – 3.5×** | per form table §1.3 |
+| Decree solo Gold mult | **2×** capture burst | 1.5× – 2.5× |
+| Offline efficiency | **0.5** | 0.4 – 0.6 |
+| Elo formula divisor | **1e6** | 0.8e6 – 1.2e6 |
+| Minutes to Stage 20 (model) | **34.2** | target 30–40 |
 
 ---
 
@@ -663,7 +775,7 @@ Reward: +3% Super-Piece stat mult (cap 30%)
 |--------------|-------------|
 | King + Royal Decree | Full Stage 50 roster |
 | Pawn + dynamic promotion | Queen, Rook |
-| Initiative system | Multi-board exhibitions |
+| Initiative system | Live PvP matchmaking |
 | Stages 1–20 + 2 bosses | Full boss catalog |
 | Gold + 1 prestige layer | Trophy shop |
 | Basic auto-AI heuristic | AI personalities |
@@ -678,7 +790,7 @@ Reward: +3% Super-Piece stat mult (cap 30%)
 | Upgrade cost | `Cost(L) = Base × Growth^(L-1)` |
 | Piece stat | `Stat(L) = BaseStat × 1.12^(L-1)` |
 | Action interval | `BaseInterval / (1 + INI_level × 0.08) / GlobalSpeedMult` |
-| Stage Gold mult | `1.14^(Stage-1)` |
+| Stage Gold mult | `1.12^(Stage-1)` |
 | Gold per action | `BaseDrip × StageGoldMult × PrestigeMult × ActiveMult` |
 | Elo on prestige | `floor(sqrt(MaxStage × TotalGold / 1e6))` |
 | Super-Piece stat | `PawnStat × PromotionMult[form]` |
@@ -695,7 +807,7 @@ Features implemented in the client but not fully specified in earlier GDD sectio
 | **Wave state machine** | `WAVE_PREP` / `WAVE_ACTIVE`; clear → stage++ → prep in one step |
 | **Prep repositioning** | Tap friendly piece → empty square on ranks 0–1 (King rank 0 only) |
 | **Piece shop** | Milestone unlocks; buy pieces + board slot upgrades in prep |
-| **Endless scaling** | Enemy HP `1.08^(stage-1)`, AP `1.06^(stage-1)`; wave size cap 16; procedural mix |
+| **Endless scaling** | Enemy HP `1.114^(stage-1)`, AP `1.055^(stage-1)`; wave size cap 16; procedural mix |
 | **Boss loop** | Milestone bosses (10,15,20,30,45,50) + endless every 10 after 50; identities & trophies |
 | **Wave spawn safety** | Occupancy map includes player deploy squares; no enemy/boss spawn on blocked cells |
 | **Pawn leak** | Enemy pawn on player back rank → unblockable King damage, pawn removed |
@@ -704,7 +816,6 @@ Features implemented in the client but not fully specified in earlier GDD sectio
 | **Line combat resolution** | `combatMovement.ts` — ranged sliders land beside target after chip/kill |
 | **King fail UX** | `failWave`, prep **King fallen** banner, King restore, 80% enemy HP per fail |
 | **Prestige / meta** | Elo Shards, meta tree, Grandmaster bonus pawns on reset |
-| **Exhibitions** | Background gold boards from meta rank |
 | **Army buildup** | Super-promotions persist across waves; prep relocates them to ranks 0–1; death/prestige only reset |
 | **En Passant Economy** | +25%/rank stat stack on stage clear; `fromForm` hints auto-promotion |
 | **Immortal Game** | One revive/stage + revival flash AP buff |
@@ -714,10 +825,12 @@ Features implemented in the client but not fully specified in earlier GDD sectio
 | **Persistence** | `localStorage` mid-wave board + phase restore |
 | **Manual turn-based** | Global initiative queue; enemy auto-step, player pause (§1.4.1) |
 | **Auto interleaved** | Auto-play uses same queue — no enemy kill chains (Phase 7.5) |
-| **Offline progression** | `lastActiveAtMs` + 50% drip on return; 8h cap (12h Idle Grandmaster); exhibitions always |
+| **Offline progression** | `lastActiveAtMs` + 50% drip on return; 8h cap (12h Idle Grandmaster) |
 | **King fail telegraph** | `lastKingFailAttribution` + banner cause line (capture / leak / damage) |
-| **Lifetime stats** | `lifetime.*` survives prestige — drives wardrobe unlocks |
-| **Cosmetics / Themes** | `cosmetics.ts` catalog; **Themes** tab; Tailwind classes on board + shell |
+| **Lifetime stats** | `lifetime.*` survives prestige — achievements / telemetry |
+| **Intent Ribbon** | `enemyIntent.ts` + Threat timeline on `ChessBoard.vue`; Tempo Bonus (`combatStore` refreshes telegraph) |
+| **Store architecture** | Hub-and-spoke Pinia: `gameStore` + `combatStore` + `economyStore` + `metaStore` + `townStore` |
+| **Board presentation** | Default shell/board styling + gradual aesthetics (`aestheticProgression.ts`, `fantasy-theme.css`) |
 | **Gradual aesthetics (8.6)** | `getVisualTier` (n^1.5), board evolution (log), 12 music layers, CSS auras, prestige trophies |
 | **Grandmaster boss** | Phase III +30% player initiative / +50% click; checkmate phase skip; 180s boss timer + Deep Clock +30s |
 | **State / ghost JSON** | `gameSerialization.ts` full save + `combatSnapshotsEqual` round-trip test (promotions, boss runtime, mid-wave); `ghostSystem.ts` army snapshot for Arena DB |
@@ -765,9 +878,9 @@ Features implemented in the client but not fully specified in earlier GDD sectio
 
 ---
 
-## 9. Multiplayer & PvP (Future Vision)
+## 9. Multiplayer & PvP
 
-**Status:** Long-term roadmap — **Phase 8.8 prep shipped** (army snapshots, local ghost DB, draft matchmaking, PvP ghost AI). Live servers / UI still future.
+**Status:** **Prep shipped** (PC engine, Arena loadout, normalization, ghost DB). **Two-mode design** is canonical in **§1.1a**. Live ranked/unranked queues and servers remain post-1.0.
 
 **Ghost army snapshot (schema `0.8.0`):** Each piece stores `kind`, `position`, `stats` (hp/maxHp/ap/def), `upgradeLevels`, optional `superForm` + `superTraits`, optional `slotIndex`. Payload includes `sourceStage`, `powerScore`, `exportedAtMs`. Import rebuilds `playerPieces` with fresh initiative timers.
 
@@ -834,32 +947,13 @@ PiecePC =
 
 ### 9.2 Ranked Mode (Fair Play)
 
-**Audience:** Competitive players who want chess-tactics-meets-autobattler skill expression without pay-to-win.
-
-| Rule | Detail |
-|------|--------|
-| **Point cap** | Both players restricted to an **identical fixed cap** (draft: **1,000 PC**) regardless of SP progress |
-| **Stat normalization** | Optional **Ranked stat clamp** — upgrade levels capped at a season baseline (e.g. AP/HP/DEF L15, INI L5) so veterans cannot smuggle L50 grinds into Ranked via point math alone |
-| **Roster access** | All piece **types** unlocked for Ranked army builder; only **point budget** limits composition |
-| **Matchmaking** | Elo-based (separate **PvP Elo** from prestige Elo Shards — see §9.5) |
-| **Success factors** | Build efficiency (PC spent vs. threat coverage), initiative layering, focus fire, King shelter |
-
-Ranked is the **primary esports / retention loop** for MP: small meta shifts (seasonal PC retunes) without invalidating SP progression.
+See **§1.1a Ranked Mode** for the canonical v1.0 ruleset. Implementation: `ARENA_POINT_CAP = 1000`, `pvpNormalization.ts`, `ArenaLoadout.vue`.
 
 ---
 
-### 9.3 Unranked Mode (Power Fantasy)
+### 9.3 Unranked Mode (Flex)
 
-**Audience:** Players who want to **flex single-player investment** in chaotic, high-stakes brawls.
-
-| Rule | Detail |
-|------|--------|
-| **Scaling cap** | Player's point cap scales with **SP progression** — draft: `Cap = 800 + 12 × maxStageEverReached + floor(lifetimeGold / 500_000)` (soft cap ~3,000–4,000 at endgame) |
-| **Full stat import** | Actual upgrade levels and equipped super-promotions from the player's SP roster feed directly into PC and combat stats |
-| **Matchmaking** | Casual queue; optional friend codes; no PvP Elo impact |
-| **Fantasy beat** | Stage-50 grinder deploys 12+ upgraded pieces + multiple super-promotions vs. another whale — **numbers fly, boards explode** |
-
-Unranked is the **SP → MP bridge**: idle progression unlocks bigger armies, not automatic Ranked advantage.
+See **§1.1a Unranked Mode** for the canonical v1.0 ruleset. Full stat import + scaling PC cap; casual / friendly matchmaking without PvP Elo.
 
 ---
 
@@ -889,11 +983,11 @@ The **same initiative system** as single-player manual mode (§1.4.1) governs li
 | SP System | MP Role |
 |-----------|---------|
 | Prestige Elo Shards | **Not** PvP rating — remains PvE meta currency |
-| Trophies / Stage milestones | Unlock **cosmetic** board themes, piece skins for PvP |
+| Trophies / Stage milestones | Boss flair; profile / aesthetic unlock hooks |
 | Super-promotions | High-PC assets in Unranked; normalized or banned above cap in Ranked |
 | Lifetime stats (Phase 8) | Feed Unranked cap formula; achievement flair in profile |
 
-**PvP Elo (separate):** Win/Loss in Ranked only; seasonal resets optional. Placement matches calibrate starting rating.
+**PvP Elo (separate):** Win/Loss in **Ranked** only; players paired by similar rating ( **to implement** — see `tasks.md` Post-1.0). Placement matches calibrate starting rating. **Unranked** uses casual/friendly pairing without rating pressure.
 
 ---
 

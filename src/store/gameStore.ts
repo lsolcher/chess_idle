@@ -1,6 +1,6 @@
 /**
- * Central Pinia store for Idle Chess RPG v0.3 run state.
- * Wraps `GameState` from domain types; combat loops and UI read/write through here.
+ * Central Pinia hub for Idle Chess RPG run state.
+ * Persists `GameState`; delegates combat to `combatStore` and economy to `economyStore`.
  */
 import { createPinia, defineStore, getActivePinia, setActivePinia } from 'pinia'
 import {
@@ -9,55 +9,40 @@ import {
   buildTurnOrderQueue,
   getNextReadyActor,
   getReadyPlayerPieceIds,
-  processReadyInitiativeActions,
-  scheduleNextAction,
   syncInitiativeProgress,
 } from '@/engine/initiative'
-import { selectBestMove } from '@/engine/aiHeuristic'
-import { getEnemyMoveHeuristic } from '@/engine/enemyAiHeuristic'
-import { coordKey, getAllPieces } from '@/engine/board'
-import { resolveCombatMove } from '@/engine/combat'
-import {
-  CLICK_COOLDOWN_MS,
-  computeClickCooldownProgress,
-  isClickCombatReady,
-  resolveClickDamage,
-} from '@/engine/clickCombat'
-import { getCombatTimeMs } from '@/engine/combatTime'
+import { getAllPieces, reconcileUniqueBoardPositions } from '@/engine/board'
+import { computeClickCooldownProgress, isClickCombatReady } from '@/engine/clickCombat'
 import type { BoardMove } from '@/engine/moves'
 import { generateLegalMoves } from '@/engine/moves'
-import {
-  getWaveCheckpointStage,
-  resolveStageAfterFail,
-} from '@/engine/waveCheckpoints'
-import {
-  applyFailEnemyHpScale,
-  getKingFailReason,
-  healPlayerPiecesForPrep,
-  countLivingEnemies,
-  isWaveCleared,
-  isWaveFailed,
-  persistArmyPromotionsBetweenStages,
-  relocateArmyToPrepRanks,
-  restorePlayerKingForPrep,
-} from '@/engine/waveState'
+import { healPlayerPiecesForPrep } from '@/engine/waveState'
+import { buildIntentTimeline } from '@/engine/enemyIntent'
 import {
   getRoyalDecreeModifiers,
+  normalizeRoyalDecreeState,
   reduceRoyalDecree,
   runRoyalDecreeStateMachineCheck,
 } from '@/engine/royalDecree'
+import { resolveEffectiveAutoAiPersonality } from '@/engine/adaptiveAI'
+import { isWavePatternCountered, resolveWavePatternForStage } from '@/engine/wavePatterns'
+import { useMetaStore } from '@/store/metaStore'
 import {
   applyDeploySlotMilestones,
+  clampDeploySlotsToRoster,
   buildPieceShopCatalog,
-  createShopPieceId,
-  findDeploySquare,
-  MAX_DEPLOY_SLOTS,
   resolveUnlockedSlotsFromMilestones,
-  type PieceShopOffer,
 } from '@/engine/pieceShop'
 import { getBossWaveClearMultiplier, isBossStage } from '@/engine/stageManager'
+import {
+  buildOnboardingEnemyPieces,
+  buildOnboardingPlayerPieces,
+  isOnboardingTelegraphWave,
+  ONBOARDING_PAWN_ID,
+  ONBOARDING_ROOK_ID,
+} from '@/engine/onboardingTelegraph'
+import { computeAdvanceStageAfterClear, preparePlayerPiecesForPrep } from '@/engine/waveLifecycle'
 import { generatePrepRepositionMoves } from '@/engine/prepMovement'
-import { playCombatFeedbackAudio, playGameSfx } from '@/store/gameAudioBridge'
+import { playGameSfx, playPrestigeChimeAudio } from '@/store/gameAudioBridge'
 import { spawnEnemiesForStage } from '@/engine/waves'
 import {
   applyMetaModifiersToState,
@@ -72,73 +57,44 @@ import {
 import {
   buildPostPrestigeState,
   deployGrandmasterBonusPawns,
+  PRESTIGE_UNLOCK_STAGE,
   projectPrestigeEloEarned,
 } from '@/engine/prestige'
-import { calculateTotalExhibitionGoldPerSec, tickExhibitionGold } from '@/engine/exhibitions'
-import {
-  getEnPassantCarryPercent,
-  pruneEnPassantCarry,
-  snapshotEnPassantCarry,
-  retainPromotionFormHints,
-} from '@/engine/enPassantEconomy'
-import {
-  consumeRevivalFlashAction,
-  getRevivalFlashApMult,
-  isPieceInvulnerable,
-  tryImmortalRevive,
-} from '@/engine/immortalGame'
 import { evaluateAutoAdvanceTick } from '@/engine/waveAutomation'
-import {
-  mergeTownBonuses,
-  NEUTRAL_TOWN_BONUSES,
-} from '@/engine/townBuildings'
-import {
-  applyBossDamageReduction,
-  applyKingReflectDamage,
-  calculateIronRookReflectDamage,
-  createBossCombatRuntime,
-  tickBossMechanics,
-} from '@/engine/bossMechanics'
-import { evaluateBossTrophyAward } from '@/engine/bossTrophies'
+import { mergeTownBonuses, NEUTRAL_TOWN_BONUSES } from '@/engine/townBuildings'
+import { createBossCombatRuntime } from '@/engine/bossMechanics'
 import { getBossDefinition, resolveBossIdentity } from '@/engine/bossIdentity'
-import {
-  attributionFromEnemyMove,
-  formatKingFailTelegraph,
-} from '@/engine/kingFailAttribution'
-import {
-  getBossTimeRemainingMs,
-  getBossWaveLimitMs,
-  isBossWaveTimedOut,
-} from '@/engine/bossTimer'
+import { formatKingFailTelegraph } from '@/engine/kingFailAttribution'
+import { getBossTimeRemainingMs, getBossWaveLimitMs, isBossWaveTimedOut } from '@/engine/bossTimer'
+import { refreshPlayerArmyCombatStats } from '@/engine/playerStageScaling'
 import {
   buildAestheticProgressSnapshot,
   getBoardEvolutionClasses,
+  getBoardEvolutionShellClasses,
   getBoardEvolutionTier,
+  getBoardSquareEvolutionClasses,
   getPermanentTrophyShellClasses,
   getPieceAuraClasses,
+  getPieceVictoryGlowClasses,
+  getVictoryBackgroundShellClasses,
+  getPiecePowerAuraClasses,
+  getPiecePowerAuraTier,
+  getShellAtmosphereClasses,
   MAX_PIECE_AURA_TIER,
   resolvePermanentVisualTrophies,
 } from '@/engine/aestheticProgression'
 import { getGrandmasterCombatModifiers } from '@/engine/grandmasterBoss'
 import {
   getMusicLayerProgress,
+  getUnlockedMusicLayers,
   MUSIC_LAYER_DEFINITIONS,
   type MusicLayerDefinition,
+  type MusicLayerId,
 } from '@/engine/musicLayers'
 import { serializeGameState } from '@/engine/gameSerialization'
-import {
-  accumulateWaveCombatStats,
-  buildDefeatReport,
-  buildVictoryReport,
-  createEmptyWaveCombatStats,
-} from '@/engine/waveOutcome'
-import {
-  nextCombatActionsSinceEnemyKill,
-  shouldFailWaveForCombatStall,
-} from '@/engine/waveCombatPacing'
+import { createEmptyWaveCombatStats } from '@/engine/waveOutcome'
 import { ARENA_POINT_CAP, canSaveArenaLoadout } from '@/engine/arenaLoadout'
 import { shouldRunAutoShopAssistant } from '@/engine/supporterQoL'
-import { useMetaStore } from '@/store/metaStore'
 import { useTownStore } from '@/store/townStore'
 import { calculateArmyPvPValue } from '@/engine/pvpMath'
 import {
@@ -154,25 +110,12 @@ import {
   findCosmeticById,
   getCosmeticProgress,
   isCosmeticUnlocked,
+  getStrategySuiteClasses,
   resolveCosmeticTheme,
   resolveEquippedCosmetics,
   type CosmeticDefinition,
 } from '@/engine/cosmetics'
-import { resolveEnemyPawnLeaks } from '@/engine/pawnLeak'
-import {
-  buildPromotionContext,
-  runPromotionPipeline,
-  updatePlayerPiece,
-} from '@/store/promotionActions'
-import {
-  getAvailablePromotionForms,
-  getPromotionStreakGoldMult,
-} from '@/engine/promotion'
-import {
-  getHighlightedUpgradeCatalog,
-  pickBestAffordablePurchase,
-  type UpgradeOffer,
-} from '@/engine/upgrades'
+import { getHighlightedUpgradeCatalog, pickBestAffordablePurchase, type UpgradeOffer } from '@/engine/upgrades'
 import type { PersistenceOptions } from 'pinia-plugin-persistedstate'
 import {
   bootstrapPersistedRosters,
@@ -181,25 +124,19 @@ import {
 } from '@/store/persistConfig'
 import {
   createCombatFeedback,
-  feedbackFromCombatMove,
+  isBoardZoomActive as isCombatBoardZoomed,
+  isImpactFrameActive as isCombatImpactFrozen,
   isScreenShaking as isScreenShakeActive,
-  pruneCombatFeedback,
-  SCREEN_SHAKE_MS,
 } from '@/engine/combatFeedback'
 import {
-  buildPieceStats,
   calculateActionIntervalSec,
   calculateActiveMult,
   calculateGoldAction,
-  calculateGoldClear,
   calculateEloShardsEarned,
-  COMBO_CAP,
   COMBO_DECAY_MS,
   createInitialGameState,
-  createPiece,
   normalizeAutoAiPersonality,
   STAMINA_CLICK_COST,
-  STAMINA_REGEN_PER_SEC,
   type AutoAiPersonality,
   type ChessPiece,
   type CombatFocus,
@@ -209,9 +146,21 @@ import {
   type PieceKind,
   type SuperPromotionForm,
 } from '@/types/game'
+import { getPromotionStreakGoldMult } from '@/engine/promotion'
+import { useCombatStore } from '@/store/combatStore'
+import { useEconomyStore } from '@/store/economyStore'
 
-/** Minimum stage before manual prestige unlocks (GDD §2.4). */
-export const PRESTIGE_UNLOCK_STAGE = 20
+export { PRESTIGE_UNLOCK_STAGE } from '@/engine/prestige'
+export type { AwardGoldOptions } from '@/store/economyStore'
+export type { CombatTickResult } from '@/store/combatStore'
+
+function combat() {
+  return useCombatStore()
+}
+
+function economy() {
+  return useEconomyStore()
+}
 
 /** Resolves meta tree + Chess Town bonuses for combat and economy getters. */
 function resolveEffectiveMetaModifiers(state: GameState) {
@@ -219,20 +168,6 @@ function resolveEffectiveMetaModifiers(state: GameState) {
   const pinia = getActivePinia()
   if (!pinia) return mergeTownBonuses(base, NEUTRAL_TOWN_BONUSES)
   return mergeTownBonuses(base, useTownStore(pinia).getTownBonuses())
-}
-
-export interface AwardGoldOptions {
-  applyActiveMult?: boolean
-  incrementCombo?: boolean
-  nowMs?: number
-}
-
-export interface CombatTickResult {
-  actedCount: number
-  enemyActedCount: number
-  goldEarned: number
-  actedPieceIds: string[]
-  enemyActedPieceIds: string[]
 }
 
 /** Narrows Pinia `this.$state` for actions that pass full state into pure engines. */
@@ -323,6 +258,7 @@ export const useGameStore = defineStore('game', {
         state.currentStage,
         state.lifetime.maxStageEverReached,
         state.lifetime.totalPrestiges,
+        state.lifetime.lifetimeWavesCleared ?? 0,
       )
     },
 
@@ -335,6 +271,67 @@ export const useGameStore = defineStore('game', {
         return { light: '', dark: '' }
       }
       return getBoardEvolutionClasses(getBoardEvolutionTier(state.currentStage))
+    },
+
+    boardEvolutionTier(state): number {
+      return getBoardEvolutionTier(state.currentStage)
+    },
+
+    boardEvolutionShellClass(): string {
+      if (
+        !this.aestheticPreferences.gradualProgression ||
+        !this.aestheticPreferences.boardEvolution
+      ) {
+        return ''
+      }
+      return getBoardEvolutionShellClasses(this.boardEvolutionTier)
+    },
+
+    activeMusicLayers(state): MusicLayerId[] {
+      if (!state.aestheticPreferences.musicLayers) return ['base']
+      return getUnlockedMusicLayers(
+        state.lifetime.maxStageEverReached,
+        state.lifetime.totalPrestiges,
+      )
+    },
+
+    shellAtmosphereClass(): string {
+      return getShellAtmosphereClasses(
+        this.lifetime.maxStageEverReached,
+        this.activeMusicLayers,
+      )
+    },
+
+    victoryBackgroundOverlayClass(): string {
+      if (!this.aestheticPreferences.gradualProgression) return ''
+      return getVictoryBackgroundShellClasses(
+        this.aestheticProgress.victoryBackgroundTier,
+      )
+    },
+
+    showMusicParticles(): boolean {
+      const layers = this.activeMusicLayers
+      return (
+        layers.includes('strings') ||
+        layers.includes('celestial') ||
+        layers.includes('orchestral') ||
+        layers.includes('god')
+      )
+    },
+
+    showMusicLightShafts(): boolean {
+      return (
+        this.activeMusicLayers.includes('god') ||
+        this.activeMusicLayers.includes('celestial')
+      )
+    },
+
+    strategySuiteClasses() {
+      return getStrategySuiteClasses(this.cosmeticTheme)
+    },
+
+    isBoardZoomActive(): boolean {
+      return isCombatBoardZoomed(this.boardZoomUntilMs, Date.now())
     },
 
     permanentShellAccentClasses(state): string {
@@ -415,6 +412,49 @@ export const useGameStore = defineStore('game', {
           player: state.globalSpeedMult * gm.playerInitiativeMult,
           enemy: state.globalSpeedMult,
         },
+      )
+    },
+
+    intentSpeedMults(state) {
+      const gm = getGrandmasterCombatModifiers(state.bossCombat, state.enemyPieces)
+      return {
+        player: state.globalSpeedMult * gm.playerInitiativeMult,
+        enemy: state.globalSpeedMult,
+      }
+    },
+
+    /** Next 3 initiative actors for the Enemy Intent Ribbon. */
+    enemyIntentTimeline(state) {
+      const gm = getGrandmasterCombatModifiers(state.bossCombat, state.enemyPieces)
+      return buildIntentTimeline(
+        state.playerPieces,
+        state.enemyPieces,
+        state.lastSimulatedMs,
+        state.globalSpeedMult,
+        {
+          player: state.globalSpeedMult * gm.playerInitiativeMult,
+          enemy: state.globalSpeedMult,
+        },
+      )
+    },
+
+    currentWavePattern(state) {
+      return resolveWavePatternForStage(state.currentStage)
+    },
+
+    wavePatternCountered(state) {
+      const pinia = getActivePinia()
+      if (!pinia) return false
+      const meta = useMetaStore(pinia)
+      const pattern = resolveWavePatternForStage(state.currentStage)
+      return isWavePatternCountered(pattern, meta.dojoModules)
+    },
+
+    effectiveAutoAiPersonality(state) {
+      return resolveEffectiveAutoAiPersonality(
+        state.autoAiPersonality,
+        state.currencies.eloShards,
+        state.maxStageReached,
       )
     },
 
@@ -665,6 +705,10 @@ export const useGameStore = defineStore('game', {
       return isScreenShakeActive(state.screenShakeUntilMs, Date.now())
     },
 
+    isImpactFrameActive(state): boolean {
+      return isCombatImpactFrozen(state.impactFreezeUntilMs, Date.now())
+    },
+
     projectedEloEarned(state): number {
       return calculateEloShardsEarned(
         state.maxStageReached,
@@ -689,15 +733,13 @@ export const useGameStore = defineStore('game', {
       )
     },
 
-    exhibitionGoldPerSec(state): number {
-      const mods = resolveEffectiveMetaModifiers(state)
-      if (mods.exhibitionRank <= 0) return 0
-      return calculateTotalExhibitionGoldPerSec(
-        mods.exhibitionRank,
-        state.currentStage,
-        state.playerPieces,
-        state.prestigeGoldMult,
-        state.globalSpeedMult,
+    showOnboardingTelegraph(state): boolean {
+      return (
+        state.wavePhase === 'WAVE_ACTIVE' &&
+        isOnboardingTelegraphWave(
+          state.currentStage,
+          state.lifetime.onboardingTelegraphComplete ?? false,
+        )
       )
     },
   },
@@ -713,6 +755,7 @@ export const useGameStore = defineStore('game', {
         this.playerPieces.map((piece) =>
           bootstrapPieceInitiative(piece, nowMs, this.globalSpeedMult),
         ),
+        { missingHpRecoveryFraction: this.metaModifiers.prepMissingHpRecoveryFraction },
       )
       this.enemyPieces = []
       this.wavePhase = 'WAVE_PREP'
@@ -721,31 +764,27 @@ export const useGameStore = defineStore('game', {
       this.combatLoopRunning = false
     },
 
+    /** Repairs duplicate coordinates so pieces do not vanish or jump on the board. */
+    reconcileBoardPositions(): void {
+      const fixed = reconcileUniqueBoardPositions(this.playerPieces, this.enemyPieces)
+      this.playerPieces = fixed.playerPieces
+      this.enemyPieces = fixed.enemyPieces
+    },
+
     applyComboDecay(nowMs = Date.now()): void {
-      if (this.combo.count <= 0) return
-      const elapsed = nowMs - this.combo.lastActionAtMs
-      if (elapsed >= COMBO_DECAY_MS) {
-        this.combo.count = 0
-      }
+      economy().applyComboDecay(nowMs)
     },
 
     incrementCombo(nowMs = Date.now()): void {
-      this.applyComboDecay(nowMs)
-      this.combo.count = Math.min(this.combo.count + 1, COMBO_CAP)
-      this.combo.lastActionAtMs = nowMs
+      economy().incrementCombo(nowMs)
     },
 
     addGold(amount: number): void {
-      if (!Number.isFinite(amount) || amount <= 0) return
-      this.currencies.gold += amount
-      this.currencies.totalGoldEarned += amount
-      this.lifetime.lifetimeGoldEarned += amount
-      this.touchSessionActivity()
+      economy().addGold(amount)
     },
 
-    /** Counts shop/stat upgrades toward lifetime wardrobe thresholds. */
     recordUpgradePurchase(): void {
-      this.lifetime.totalUpgradesBought += 1
+      economy().recordUpgradePurchase()
     },
 
     /** Stamps save time for offline progression (Phase 7.5). */
@@ -759,29 +798,19 @@ export const useGameStore = defineStore('game', {
 
     dismissWaveOutcome(nowMs = Date.now()): void {
       const report = this.waveOutcomeReport
-      this.waveOutcomeReport = null
-      if (
-        report?.kind === 'victory' &&
-        this.autoAdvanceWavesPurchased &&
-        this.autoAdvanceWavesEnabled &&
-        this.autoStartWavesEnabled
-      ) {
-        this.waveCompleteAtMs = nowMs
-      } else {
-        this.waveCompleteAtMs = null
+      if (report?.kind === 'victory') {
+        this.proceedFromWaveCompleteToPrep(nowMs)
       }
+      this.waveOutcomeReport = null
+      this.waveCompleteAtMs = null
     },
 
     resetWaveCombatStats(): void {
       this.waveCombatStats = createEmptyWaveCombatStats()
     },
 
-    /** Fails the wave when the boss timer elapses (GDD §3.2). */
     checkBossWaveTimeout(nowMs = Date.now()): void {
-      if (this.wavePhase !== 'WAVE_ACTIVE') return
-      if (!isBossWaveTimedOut(this.bossWaveDeadlineMs, nowMs)) return
-      this.recordKingFailAttribution({ source: 'timeout' })
-      this.failWave(nowMs)
+      combat().checkBossWaveTimeout(nowMs)
     },
 
     /** JSON export for saves / future multiplayer sync (Phase 8.5). */
@@ -868,23 +897,57 @@ export const useGameStore = defineStore('game', {
       return getPieceAuraClasses(piece.side, tier, piece.kind)
     },
 
+    /** Upgrade-rank power glow + win-streak sparkle + optional level-up pulse. */
+    pieceJuiceClassFor(piece: ChessPiece): string {
+      const parts: string[] = []
+      if (piece.side === 'player') {
+        const powerTier = getPiecePowerAuraTier(piece.upgradeLevels)
+        const power = getPiecePowerAuraClasses(piece.side, powerTier)
+        if (power) parts.push(power)
+        const victory = this.pieceVictoryGlowClassFor(piece)
+        if (victory) parts.push(victory)
+      }
+      const stageAura = this.pieceAuraClassFor(piece)
+      if (stageAura) parts.push(stageAura)
+      const pulseUntil = this.pieceJuicePulseUntilMs[piece.id] ?? 0
+      if (pulseUntil > Date.now()) parts.push('animate-piece-level-pulse')
+      return parts.join(' ')
+    },
+
+    /** Win-based glow on standard chess glyphs (run streak + lifetime clears). */
+    pieceVictoryGlowClassFor(piece: ChessPiece): string {
+      if (
+        piece.side !== 'player' ||
+        !this.aestheticPreferences.gradualProgression ||
+        !this.aestheticPreferences.pieceAuras
+      ) {
+        return ''
+      }
+      const tier = this.aestheticProgress.victoryGlowTier
+      const bursting = this.armyVictoryGlowBurstUntilMs > Date.now()
+      return getPieceVictoryGlowClasses(tier, piece.kind, bursting)
+    },
+
+    boardSquareEvolutionClass(light: boolean): string {
+      if (
+        !this.aestheticPreferences.gradualProgression ||
+        !this.aestheticPreferences.boardEvolution
+      ) {
+        return ''
+      }
+      return getBoardSquareEvolutionClasses(this.boardEvolutionTier, light)
+    },
+
     spendGold(amount: number): boolean {
-      if (!Number.isFinite(amount) || amount <= 0) return true
-      if (this.currencies.gold < amount) return false
-      this.currencies.gold -= amount
-      return true
+      return economy().spendGold(amount)
     },
 
     addEloShards(amount: number): void {
-      if (!Number.isFinite(amount) || amount <= 0) return
-      this.currencies.eloShards += amount
+      economy().addEloShards(amount)
     },
 
     spendEloShards(amount: number): boolean {
-      if (!Number.isFinite(amount) || amount <= 0) return true
-      if (this.currencies.eloShards < amount) return false
-      this.currencies.eloShards -= amount
-      return true
+      return economy().spendEloShards(amount)
     },
 
     /** Recomputes prestige gold / speed / deploy slots from meta + town ranks. */
@@ -892,6 +955,18 @@ export const useGameStore = defineStore('game', {
       const pinia = getActivePinia()
       const town = pinia ? useTownStore(pinia).getTownBonuses() : NEUTRAL_TOWN_BONUSES
       applyMetaModifiersToState(readStoreState(this), town)
+      this.syncPlayerArmyCombatStats(true)
+    },
+
+    /** Applies stage + meta scaling so the army keeps pace with procedural enemies. */
+    syncPlayerArmyCombatStats(preserveHpRatio = false): void {
+      this.playerPieces = refreshPlayerArmyCombatStats(
+        this.playerPieces,
+        this.currentStage,
+        this.promotion.masteryLevel,
+        this.metaModifiers.apMult,
+        { preserveHpRatio },
+      )
     },
 
     purchaseMetaUpgrade(id: MetaUpgradeId): boolean {
@@ -910,7 +985,7 @@ export const useGameStore = defineStore('game', {
       if (!this.spendEloShards(cost)) return false
       this.metaUpgrades[id] = rank + 1
       this.applyMetaModifiers()
-      playGameSfx('upgrade')
+      playGameSfx('metaPurchase')
       return true
     },
 
@@ -947,88 +1022,46 @@ export const useGameStore = defineStore('game', {
       this.syncRoyalDecree()
       this.applyMetaModifiers()
       this.enterWavePrep(nowMs)
-      playGameSfx('prestige')
+      playPrestigeChimeAudio()
       return true
     },
 
     /**
      * Background exhibition boards — runs in prep, combat, and clear (GDD §2.5).
      */
-    /** Appends short-lived board VFX; pruned each combat tick. */
     pushCombatFeedback(
       events: ReturnType<typeof createCombatFeedback>[],
       nowMs = Date.now(),
     ): void {
-      if (events.length === 0) return
-      this.combatFeedbackEvents = [...this.combatFeedbackEvents, ...events]
-      if (events.some((event) => event.kind === 'capture')) {
-        this.screenShakeUntilMs = nowMs + SCREEN_SHAKE_MS
-      }
-      playCombatFeedbackAudio(events.map((event) => event.kind))
+      combat().pushCombatFeedback(events, nowMs)
+    },
+
+    pulsePieceJuice(pieceId: string, nowMs = Date.now()): void {
+      combat().pulsePieceJuice(pieceId, nowMs)
+    },
+
+    prunePieceJuicePulse(nowMs = Date.now()): void {
+      combat().prunePieceJuicePulse(nowMs)
     },
 
     pruneCombatFeedback(nowMs = Date.now()): void {
-      this.combatFeedbackEvents = pruneCombatFeedback(this.combatFeedbackEvents, nowMs)
+      combat().pruneCombatFeedback(nowMs)
     },
 
-    tickExhibitions(nowMs = Date.now()): number {
-      const mods = this.metaModifiers
-      if (mods.exhibitionRank <= 0) {
-        this.exhibitionLastTickMs = nowMs
-        return 0
-      }
-
-      const deltaSec = Math.max(0, (nowMs - this.exhibitionLastTickMs) / 1000)
-      this.exhibitionLastTickMs = nowMs
-      if (deltaSec <= 0) return 0
-
-      const granted = tickExhibitionGold(
-        mods.exhibitionRank,
-        this.currentStage,
-        this.playerPieces,
-        this.prestigeGoldMult,
-        this.globalSpeedMult,
-        deltaSec,
-      )
-      if (granted > 0) {
-        this.addGold(granted)
-        this.exhibitionGoldEarned += granted
-      }
-      return granted
+    completeOnboardingTelegraph(): void {
+      combat().completeOnboardingTelegraph()
     },
 
-    awardActionGold(options: AwardGoldOptions = {}): number {
-      const nowMs = options.nowMs ?? Date.now()
-      this.applyComboDecay(nowMs)
+    refreshEnemyIntent(nowMs = this.lastSimulatedMs): void {
+      combat().refreshEnemyIntent(nowMs)
+    },
 
-      if (options.incrementCombo) {
-        this.incrementCombo(nowMs)
-      }
+    grantTempoBonus(coord: { file: number; rank: number }, nowMs = Date.now()): void {
+      combat().grantTempoBonus(coord, nowMs)
+    },
 
-      const activeMult = options.applyActiveMult
-        ? calculateActiveMult(this.combo.count)
-        : 1
-
-      const raw = calculateGoldAction(
-        this.currentStage,
-        this.prestigeGoldMult,
-        activeMult,
-        this.friendlyActionsThisStage,
-      )
-
-      const studyMult = this.studyPackActive ? 1.25 : 1
-      const streakMult = getPromotionStreakGoldMult(this.promotion.streak)
-      const granted = raw * studyMult * streakMult
-
-      this.addGold(granted)
-      if (this.wavePhase === 'WAVE_ACTIVE') {
-        this.waveCombatStats = accumulateWaveCombatStats(this.waveCombatStats, {
-          goldFromActions: granted,
-          friendlyActions: 1,
-        })
-      }
-      this.friendlyActionsThisStage += 1
-      return granted
+    awardActionGold(options: import('@/store/economyStore').AwardGoldOptions = {}): number {
+      return economy().awardActionGold(options)
     },
 
     /**
@@ -1036,38 +1069,47 @@ export const useGameStore = defineStore('game', {
      */
     syncMilestoneUnlocks(): void {
       this.unlockedSlots = resolveUnlockedSlotsFromMilestones(this.maxStageReached)
-      this.deploySlots = applyDeploySlotMilestones(this.maxStageReached, this.deploySlots)
+      this.deploySlots = clampDeploySlotsToRoster(
+        applyDeploySlotMilestones(this.maxStageReached, this.deploySlots, this.unlockedSlots),
+        this.unlockedSlots,
+      )
+    },
+
+    /** Clears victory modal → prep: advances stage and refreshes combat clocks. */
+    proceedFromWaveCompleteToPrep(nowMs = Date.now()): boolean {
+      if (this.wavePhase !== 'WAVE_COMPLETE') return false
+      return this.advanceStageAfterClear(nowMs)
     },
 
     /**
      * Applies post-clear stage increment and opens prep for the next wave (GDD §1.8).
      */
     advanceStageAfterClear(nowMs = Date.now()): boolean {
-      const carryPct = getEnPassantCarryPercent(this.enPassantEconomyRank)
-      const carryIncrement = snapshotEnPassantCarry(this.playerPieces, carryPct, {})
-      this.playerPieces = persistArmyPromotionsBetweenStages(
-        this.playerPieces,
-        carryIncrement,
-      )
-      this.enPassantCarryByPieceId = retainPromotionFormHints(carryIncrement)
-
-      this.currentStage += 1
-      if (this.currentStage > this.maxStageReached) {
-        this.maxStageReached = this.currentStage
-      }
-      this.lifetime = bumpLifetimeStage(this.lifetime, this.maxStageReached)
-      this.syncMilestoneUnlocks()
-      this.prestigeAvailable = this.maxStageReached >= PRESTIGE_UNLOCK_STAGE
-      this.friendlyActionsThisStage = 0
-      this.promotion.streak = 0
-      this.immortalGameUsedThisStage = false
-      this.failCountThisStage = 0
-      this.enemyHpScale = 1
+      const next = computeAdvanceStageAfterClear({
+        playerPieces: this.playerPieces,
+        enPassantCarryByPieceId: this.enPassantCarryByPieceId,
+        enPassantEconomyRank: this.enPassantEconomyRank,
+        currentStage: this.currentStage,
+        maxStageReached: this.maxStageReached,
+        lifetime: this.lifetime,
+      })
+      this.playerPieces = next.playerPieces
+      this.enPassantCarryByPieceId = next.enPassantCarryByPieceId
+      this.currentStage = next.currentStage
+      this.maxStageReached = next.maxStageReached
+      this.lifetime = bumpLifetimeStage(next.lifetime, next.maxStageReached)
+      this.prestigeAvailable = next.prestigeAvailable
+      this.friendlyActionsThisStage = next.friendlyActionsThisStage
+      this.promotion.streak = next.promotionStreak
+      this.immortalGameUsedThisStage = next.immortalGameUsedThisStage
+      this.failCountThisStage = next.failCountThisStage
+      this.enemyHpScale = next.enemyHpScale
       this.pendingPromotion = null
       this.manualPendingPieceId = null
       this.prepPendingPieceId = null
-      this.waveCheckpointStage = getWaveCheckpointStage(this.maxStageReached)
-      this.lastFailRewindToStage = null
+      this.waveCheckpointStage = next.waveCheckpointStage
+      this.lastFailRewindToStage = next.lastFailRewindToStage
+      this.syncMilestoneUnlocks()
       this.enterWavePrep(nowMs)
       return true
     },
@@ -1085,24 +1127,23 @@ export const useGameStore = defineStore('game', {
       this.manualPendingPieceId = null
       this.prepPendingPieceId = null
       this.pendingPromotion = null
+      this.lastSimulatedMs = nowMs
       this.stopCombatLoop()
       this.enemyPieces = []
       this.bossCombat = null
       this.bossWaveDeadlineMs = null
-      this.playerPieces = restorePlayerKingForPrep(
-        this.playerPieces,
-        nowMs,
-        this.globalSpeedMult,
-      )
-      this.playerPieces = healPlayerPiecesForPrep(this.playerPieces)
-      this.playerPieces = relocateArmyToPrepRanks(
+      const prepPieces = preparePlayerPiecesForPrep(
         this.playerPieces,
         this.enemyPieces,
-      )
-      this.playerPieces = bootstrapPiecesForCombat(
-        this.playerPieces,
         nowMs,
         this.globalSpeedMult,
+        this.metaModifiers.prepMissingHpRecoveryFraction,
+      )
+      this.playerPieces = prepPieces.playerPieces
+      this.syncPlayerArmyCombatStats(true)
+      this.reconcileBoardPositions()
+      this.playerPieces = this.playerPieces.map((piece) =>
+        bootstrapPieceInitiative(piece, nowMs, this.globalSpeedMult),
       )
       this.runSupporterAutoShopIfEnabled()
     },
@@ -1122,6 +1163,14 @@ export const useGameStore = defineStore('game', {
      * Transitions WAVE_PREP → WAVE_ACTIVE and spawns the stage enemy set (GDD §3.1).
      */
     startWave(nowMs = Date.now()): boolean {
+      console.log('[gameStore] startWave', {
+        wavePhase: this.wavePhase,
+        stage: this.currentStage,
+        playerPieces: this.playerPieces.length,
+      })
+      if (this.wavePhase === 'WAVE_COMPLETE') {
+        this.proceedFromWaveCompleteToPrep(nowMs)
+      }
       if (this.wavePhase !== 'WAVE_PREP') return false
       this.waveOutcomeReport = null
       this.resetWaveCombatStats()
@@ -1141,131 +1190,51 @@ export const useGameStore = defineStore('game', {
         nowMs,
         this.globalSpeedMult,
       )
-      this.enemyPieces = spawnEnemiesForStage(
-        this.currentStage,
-        nowMs,
-        this.enemyHpScale,
-        this.playerPieces,
-      )
+      this.syncPlayerArmyCombatStats(true)
+      const onboarding =
+        !import.meta.env.VITEST &&
+        isOnboardingTelegraphWave(
+          this.currentStage,
+          this.lifetime.onboardingTelegraphComplete ?? false,
+        )
+      if (onboarding) {
+        this.setAutoPlay(false)
+        this.playerPieces = buildOnboardingPlayerPieces(nowMs, this.globalSpeedMult)
+        this.syncPlayerArmyCombatStats(true)
+        this.enemyPieces = buildOnboardingEnemyPieces(nowMs, this.currentStage)
+      } else {
+        this.enemyPieces = spawnEnemiesForStage(
+          this.currentStage,
+          nowMs,
+          this.enemyHpScale,
+          this.playerPieces,
+        )
+      }
+      this.reconcileBoardPositions()
       this.bossCombat = createBossCombatRuntime(this.currentStage, this.enemyPieces)
       const bossLimit = getBossWaveLimitMs(this.currentStage, this.metaUpgrades)
       this.bossWaveDeadlineMs = bossLimit > 0 ? nowMs + bossLimit : null
       this.lastPawnLeakDamage = 0
       this.clickCombatReadyAtMs = nowMs
-      this.combatFocus = this.autoMode ? 'strike' : 'move'
+      this.combatFocus = onboarding ? 'move' : this.autoMode ? 'strike' : 'move'
+      this.playerTempoHasteMult = 1
+      this.refreshEnemyIntent(nowMs)
+      if (onboarding) {
+        const pawn = this.playerPieces.find((p) => p.id === ONBOARDING_PAWN_ID)
+        if (pawn) {
+          this.beginManualPlayerTurn(pawn.id, nowMs)
+        }
+      }
       this.startCombatLoop(nowMs)
       return true
     },
 
-    /**
-     * Awards clear rewards, advances stage, and opens prep in one step (no extra "Next Wave" click).
-     */
     completeWave(nowMs = Date.now()): void {
-      if (this.wavePhase !== 'WAVE_ACTIVE') return
-      this.manualPendingPieceId = null
-      this.prepPendingPieceId = null
-      this.stopCombatLoop()
-
-      const clearedStage = this.currentStage
-      const clearGold =
-        calculateGoldClear(
-          clearedStage,
-          this.playerPieces.filter((p) => p.side === 'player').length,
-        ) * getBossWaveClearMultiplier(clearedStage)
-      this.waveCombatStats = accumulateWaveCombatStats(this.waveCombatStats, {
-        goldFromClear: clearGold,
-      })
-      this.addGold(clearGold)
-      this.incrementCombo(nowMs)
-
-      const trophy = evaluateBossTrophyAward(clearedStage, this.bossTrophiesClaimed)
-      if (trophy) {
-        this.bossTrophiesClaimed = [...this.bossTrophiesClaimed, trophy.stage]
-        this.currencies.trophies += 1
-        this.lastTrophyEarned = trophy.trophyName
-      }
-      const statsSnapshot = { ...this.waveCombatStats }
-      this.bossCombat = null
-      playGameSfx('waveClear')
-
-      this.advanceStageAfterClear(nowMs)
-      this.waveOutcomeReport = buildVictoryReport({
-        foughtStage: clearedStage,
-        nextStage: this.currentStage,
-        stats: statsSnapshot,
-        trophyName: trophy?.trophyName ?? null,
-        checkpointStage: this.waveCheckpointStage,
-      })
-      this.waveCompleteAtMs = null
+      combat().completeWave(nowMs)
     },
 
-    /**
-     * King eliminated — return to prep with softer enemy HP (GDD §1.8 fail state).
-     */
     failWave(nowMs = Date.now()): void {
-      if (this.wavePhase !== 'WAVE_ACTIVE') return
-      const foughtStage = this.currentStage
-      const statsSnapshot = { ...this.waveCombatStats }
-      const resolution = resolveStageAfterFail(this.currentStage, this.maxStageReached)
-      this.waveCheckpointStage = resolution.checkpoint
-      this.waveCompleteAtMs = null
-
-      if (resolution.rewound) {
-        this.currentStage = resolution.nextStage
-        this.failCountThisStage = 0
-        this.enemyHpScale = 1
-        this.lastFailRewindToStage = resolution.nextStage
-      } else {
-        this.failCountThisStage += 1
-        this.enemyHpScale = applyFailEnemyHpScale(this.enemyHpScale)
-        this.lastFailRewindToStage = null
-      }
-      const kingFail = getKingFailReason(this.playerPieces)
-      this.lastWaveFailReason = 'king-fallen'
-      this.lastKingFailDetail =
-        kingFail === 'missing' || kingFail === 'defeated' ? kingFail : 'defeated'
-      if (!this.lastKingFailAttribution) {
-        this.lastKingFailAttribution =
-          kingFail === 'missing'
-            ? { source: 'capture' }
-            : { source: 'damage' }
-      }
-      this.manualPendingPieceId = null
-      this.pendingPromotion = null
-      this.stopCombatLoop()
-      playGameSfx('fail')
-      this.screenShakeUntilMs = nowMs + SCREEN_SHAKE_MS
-
-      const kingFailMsg =
-        this.lastKingFailDetail === 'missing'
-          ? 'Your King was captured.'
-          : 'Your King was defeated.'
-      const rewindMsg =
-        this.lastFailRewindToStage !== null
-          ? ` Returned to milestone wave ${this.lastFailRewindToStage}.`
-          : ''
-      const softMsg =
-        this.failCountThisStage > 0
-          ? ` Enemies at ${Math.round(this.enemyHpScale * 100)}% HP this stage.`
-          : ''
-
-      this.waveOutcomeReport = buildDefeatReport({
-        foughtStage,
-        nextStage: this.currentStage,
-        stats: statsSnapshot,
-        failRewindToStage: this.lastFailRewindToStage,
-        checkpointStage: this.waveCheckpointStage,
-        failCountThisStage: this.failCountThisStage,
-        enemyHpScale: this.enemyHpScale,
-        kingFallMessage: `${kingFailMsg}${rewindMsg}${softMsg} Position your army and start again.`,
-        kingFallTelegraph: formatKingFailTelegraph(
-          this.lastKingFailAttribution,
-          this.lastKingFailDetail,
-          this.lastPawnLeakDamage,
-        ),
-      })
-
-      this.enterWavePrep(nowMs)
+      combat().failWave(nowMs)
     },
 
     /** Legacy alias — clears now advance automatically; only migrates old WAVE_COMPLETE saves. */
@@ -1313,125 +1282,48 @@ export const useGameStore = defineStore('game', {
       }
     },
 
-    /**
-     * Tracks idle combat pacing and forfeits the wave if enemies are not eliminated.
-     */
     syncCombatPacingAfterAction(
       enemiesBefore: ChessPiece[],
       nowMs = Date.now(),
     ): void {
-      if (this.wavePhase !== 'WAVE_ACTIVE') return
-
-      this.combatActionsSinceEnemyKill = nextCombatActionsSinceEnemyKill(
-        this.combatActionsSinceEnemyKill,
-        enemiesBefore,
-        this.enemyPieces,
-      )
-
-      if (
-        shouldFailWaveForCombatStall({
-          livingEnemies: countLivingEnemies(this.enemyPieces),
-          combatActionsSinceEnemyKill: this.combatActionsSinceEnemyKill,
-          stageStartedAtMs: this.stageStartedAtMs,
-          nowMs,
-          isBossStage: isBossStage(this.currentStage),
-          hasBossDeadline: this.bossWaveDeadlineMs !== null,
-        })
-      ) {
-        if (!this.lastKingFailAttribution) {
-          this.recordKingFailAttribution({ source: 'stall' })
-        }
-        this.failWave(nowMs)
-      }
+      combat().syncCombatPacingAfterAction(enemiesBefore, nowMs)
     },
 
-    /** Evaluates win/lose after board mutations during combat. */
     evaluateWaveOutcome(): void {
-      if (this.wavePhase !== 'WAVE_ACTIVE') return
-      if (isWaveFailed(this.playerPieces)) {
-        this.failWave()
-        return
-      }
-      if (isWaveCleared(this.enemyPieces)) {
-        this.completeWave()
-      }
+      combat().evaluateWaveOutcome()
     },
 
     deployPlayerPiece(piece: ChessPiece, nowMs = Date.now()): void {
-      const bootstrapped = bootstrapPieceInitiative(piece, nowMs, this.globalSpeedMult)
-      this.playerPieces = [...this.playerPieces, bootstrapped]
-      this.royalDecree = reduceRoyalDecree(this.royalDecree, {
-        type: 'PLAYER_PIECE_DEPLOYED',
-        playerPieces: this.playerPieces,
-      })
+      economy().deployPlayerPiece(piece, nowMs)
     },
 
     deployPawn(file: number, rank: number, id?: string, nowMs = Date.now()): ChessPiece {
-      const pawnId = id ?? createShopPieceId('pawn', this.playerPieces)
-      const pawn = createPiece(pawnId, 'pawn', 'player', { file, rank })
-      this.deployPlayerPiece(pawn, nowMs)
-      return pawn
+      return economy().deployPawn(file, rank, id, nowMs)
     },
 
-    /**
-     * Purchases a piece from the shop and auto-deploys on ranks 0–1 (WAVE_PREP only).
-     */
     purchasePieceFromShop(kind: PieceKind, nowMs = Date.now()): boolean {
-      const offer = this.pieceShopOffers.find((o) => o.kind === kind)
-      if (!offer?.purchasable) return false
-      if (!this.spendGold(offer.cost)) return false
-
-      const square = findDeploySquare(this.playerPieces, this.enemyPieces, kind)
-      if (!square) {
-        this.addGold(offer.cost)
-        return false
-      }
-
-      const piece = createPiece(createShopPieceId(kind, this.playerPieces), kind, 'player', square)
-      this.deployPlayerPiece(piece, nowMs)
-      this.recordUpgradePurchase()
-      playGameSfx('upgrade')
-      return true
+      return economy().purchasePieceFromShop(kind, nowMs)
     },
 
-    /** Expands maximum army size (GDD §2.3 board slot track). */
-    purchaseBoardSlot(_nowMs = Date.now()): boolean {
-      const offer = this.pieceShopOffers.find((o) => o.id === 'shop:boardSlot')
-      if (!offer?.purchasable || this.deploySlots >= MAX_DEPLOY_SLOTS) return false
-      if (!this.spendGold(offer.cost)) return false
-      this.deploySlots += 1
-      this.recordUpgradePurchase()
-      playGameSfx('upgrade')
-      return true
+    purchaseBoardSlot(nowMs = Date.now()): boolean {
+      return economy().purchaseBoardSlot(nowMs)
     },
 
     purchasePieceShopOffer(offerId: string, nowMs = Date.now()): boolean {
-      if (offerId === 'shop:boardSlot') {
-        return this.purchaseBoardSlot(nowMs)
-      }
-      const kind = offerId.replace('shop:piece:', '') as PieceKind
-      return this.purchasePieceFromShop(kind, nowMs)
+      return economy().purchasePieceShopOffer(offerId, nowMs)
     },
 
     removePlayerPiece(pieceId: string): void {
-      this.playerPieces = this.playerPieces.filter((piece) => piece.id !== pieceId)
-      const { [pieceId]: _removed, ...restCarry } = this.enPassantCarryByPieceId
-      this.enPassantCarryByPieceId = restCarry
-      this.enPassantCarryByPieceId = pruneEnPassantCarry(
-        this.enPassantCarryByPieceId,
-        this.playerPieces,
-      )
-      this.royalDecree = reduceRoyalDecree(this.royalDecree, {
-        type: 'PLAYER_PIECE_REMOVED',
-        playerPieces: this.playerPieces,
-      })
+      economy().removePlayerPiece(pieceId)
     },
 
     syncRoyalDecree(): void {
-      this.royalDecree = reduceRoyalDecree(this.royalDecree, {
-        type: 'FORCE_SYNC',
-        playerPieces: this.playerPieces,
-      })
+      this.royalDecree = normalizeRoyalDecreeState(
+        reduceRoyalDecree(this.royalDecree, {
+          type: 'FORCE_SYNC',
+          playerPieces: this.playerPieces,
+        }),
+      )
     },
 
     setAutoMode(enabled: boolean): void {
@@ -1444,86 +1336,83 @@ export const useGameStore = defineStore('game', {
       }
     },
 
-    setCombatFocus(focus: CombatFocus): boolean {
+  setCombatFocus(focus: CombatFocus): boolean {
       if (this.wavePhase !== 'WAVE_ACTIVE') return false
       if (focus === 'move' && this.autoMode) return false
-      if (focus === 'move' && !this.manualPendingPieceId) return false
+      if (focus === 'move' && !this.manualPendingPieceId) {
+        this.ensureOnboardingManualTurn(this.lastSimulatedMs)
+        if (!this.manualPendingPieceId) return false
+      }
       this.combatFocus = focus
       playGameSfx('uiClick')
       return true
+    },
+
+    /** Re-arms the scripted pawn turn during the Intent Ribbon tutorial (hydrate-safe). */
+    armOnboardingMove(nowMs = Date.now()): boolean {
+      if (this.wavePhase !== 'WAVE_ACTIVE') return false
+      this.setAutoPlay(false)
+      this.ensureOnboardingBoardState(nowMs)
+      this.ensureOnboardingManualTurn(nowMs)
+      if (!this.manualPendingPieceId) return false
+      this.combatFocus = 'move'
+      playGameSfx('uiClick')
+      return true
+    },
+
+    /** Restores tutorial roster if a mid-save wave is missing the scripted pawn/rook. */
+    ensureOnboardingBoardState(nowMs = Date.now()): void {
+      if (
+        !isOnboardingTelegraphWave(
+          this.currentStage,
+          this.lifetime.onboardingTelegraphComplete ?? false,
+        )
+      ) {
+        return
+      }
+      const hasPawn = this.playerPieces.some((p) => p.id === ONBOARDING_PAWN_ID)
+      const hasRook = this.enemyPieces.some((p) => p.id === ONBOARDING_ROOK_ID)
+      if (hasPawn && hasRook) return
+
+      this.playerPieces = buildOnboardingPlayerPieces(nowMs, this.globalSpeedMult)
+      this.syncPlayerArmyCombatStats(true)
+      this.enemyPieces = buildOnboardingEnemyPieces(nowMs, this.currentStage)
+      this.reconcileBoardPositions()
+      this.bossCombat = createBossCombatRuntime(this.currentStage, this.enemyPieces)
+      this.refreshEnemyIntent(nowMs)
+    },
+
+    ensureOnboardingManualTurn(nowMs = Date.now()): void {
+      if (
+        !isOnboardingTelegraphWave(
+          this.currentStage,
+          this.lifetime.onboardingTelegraphComplete ?? false,
+        )
+      ) {
+        return
+      }
+      const pawn = this.playerPieces.find((p) => p.id === ONBOARDING_PAWN_ID)
+      if (pawn) {
+        this.beginManualPlayerTurn(pawn.id, nowMs)
+      }
     },
 
     setAutoPlay(enabled: boolean): void {
       this.setAutoMode(enabled)
     },
 
-    setAutoAiPersonality(personality: AutoAiPersonality): void {
-      this.autoAiPersonality = personality
+    setAutoAiPersonality(_personality: AutoAiPersonality): void {
+      this.autoAiPersonality = 'adaptive'
     },
 
-    /**
-     * Ends the active manual turn when the piece has no legal moves (pass).
-     */
     skipManualTurn(nowMs = Date.now()): boolean {
-      if (this.autoMode || this.wavePhase !== 'WAVE_ACTIVE') return false
-      const pieceId = this.manualPendingPieceId
-      if (!pieceId) return false
-
-      const index = this.playerPieces.findIndex((piece) => piece.id === pieceId)
-      if (index === -1) return false
-
-      this.playerPieces[index] = scheduleNextAction(
-        this.playerPieces[index]!,
-        nowMs,
-        this.globalSpeedMult,
-      )
-      this.manualPendingPieceId = null
-      this.lastSimulatedMs = nowMs
-      this.playerPieces = syncInitiativeProgress(
-        this.playerPieces,
-        nowMs,
-        this.globalSpeedMult,
-      )
-      this.syncCombatPacingAfterAction([...this.enemyPieces], nowMs)
-      if (this.wavePhase !== 'WAVE_ACTIVE') return true
-      this.evaluateWaveOutcome()
-      playGameSfx('uiClick')
-      return true
+      return combat().skipManualTurn(nowMs)
     },
 
-    /** @internal Assigns manual turn or auto-skips when no legal moves exist. */
     beginManualPlayerTurn(pieceId: string, nowMs = Date.now()): void {
-      const piece = this.playerPieces.find((p) => p.id === pieceId)
-      if (!piece) return
-
-      const decreeMods = getRoyalDecreeModifiers(this.royalDecree)
-      const moves = generateLegalMoves(piece, {
-        allPieces: getAllPieces(this.playerPieces, this.enemyPieces),
-        decreeStepEnabled: decreeMods.decreeStepEnabled,
-      })
-
-      if (moves.length === 0) {
-        const index = this.playerPieces.findIndex((p) => p.id === pieceId)
-        if (index !== -1) {
-          this.playerPieces[index] = scheduleNextAction(
-            this.playerPieces[index]!,
-            nowMs,
-            this.globalSpeedMult,
-          )
-        }
-        this.manualPendingPieceId = null
-        this.lastSimulatedMs = nowMs
-        this.syncCombatPacingAfterAction([...this.enemyPieces], nowMs)
-        if (this.wavePhase !== 'WAVE_ACTIVE') return
-        this.evaluateWaveOutcome()
-        return
-      }
-
-      this.manualPendingPieceId = pieceId
-      this.combatFocus = 'move'
+      combat().beginManualPlayerTurn(pieceId, nowMs)
     },
 
-    /** Selects the active player piece for manual input (must be their turn). */
     selectManualPiece(pieceId: string, nowMs = Date.now()): boolean {
       if (this.autoMode || this.wavePhase !== 'WAVE_ACTIVE') return false
       const actor = getNextReadyActor(this.playerPieces, this.enemyPieces, nowMs)
@@ -1533,35 +1422,18 @@ export const useGameStore = defineStore('game', {
       return true
     },
 
-    /** Reschedules one enemy after its turn resolves (manual + auto interleaved). */
     scheduleEnemyAfterAction(pieceId: string, nowMs = Date.now()): void {
-      const index = this.enemyPieces.findIndex((piece) => piece.id === pieceId)
-      if (index === -1) return
-      this.enemyPieces[index] = scheduleNextAction(
-        this.enemyPieces[index]!,
-        nowMs,
-        this.globalSpeedMult,
-      )
+      combat().scheduleEnemyAfterAction(pieceId, nowMs)
     },
 
-    /** Reschedules one friendly piece after an auto-mode action. */
     schedulePlayerAfterAction(pieceId: string, nowMs = Date.now()): void {
-      const index = this.playerPieces.findIndex((piece) => piece.id === pieceId)
-      if (index === -1) return
-      this.playerPieces[index] = scheduleNextAction(
-        this.playerPieces[index]!,
-        nowMs,
-        this.globalSpeedMult,
-      )
+      combat().schedulePlayerAfterAction(pieceId, nowMs)
     },
 
-    /**
-     * Records why the King was lost before `evaluateWaveOutcome` calls `failWave`.
-     */
     recordKingFailAttribution(
       attribution: import('@/types/game').KingFailAttribution,
     ): void {
-      this.lastKingFailAttribution = attribution
+      combat().recordKingFailAttribution(attribution)
     },
 
     /** Selects a friendly piece to reposition on deploy ranks between waves. */
@@ -1592,818 +1464,90 @@ export const useGameStore = defineStore('game', {
         ...this.playerPieces[index]!,
         position: { ...move.to },
       }
+      this.reconcileBoardPositions()
       this.prepPendingPieceId = null
       playGameSfx('uiClick')
       return true
     },
 
     startCombatLoop(nowMs = Date.now()): void {
-      this.combatLoopRunning = true
-      this.lastSimulatedMs = nowMs
-      this.playerPieces = bootstrapPiecesForCombat(
-        this.playerPieces,
-        nowMs,
-        this.globalSpeedMult,
-      )
+      combat().startCombatLoop(nowMs)
     },
 
     stopCombatLoop(): void {
-      this.combatLoopRunning = false
+      combat().stopCombatLoop()
     },
 
-    /**
-     * Resolves back-rank promotion for a pawn (GDD §1.3).
-     * Returns fanfare gold granted; sets pendingPromotion in manual mode.
-     */
     processPromotionForPiece(pieceId: string, chosenForm?: SuperPromotionForm): number {
-      const piece = this.playerPieces.find((p) => p.id === pieceId)
-      if (!piece) return 0
-
-      const pipeline = runPromotionPipeline(
-        piece,
-        buildPromotionContext(readStoreState(this)),
-        this.enemyPieces,
-        this.promotion.streak,
-        chosenForm,
-        this.enPassantCarryByPieceId[pieceId],
-      )
-
-      this.playerPieces = updatePlayerPiece(this.playerPieces, pieceId, pipeline.piece)
-
-      if (pipeline.pendingPlayerChoice) {
-        this.pendingPromotion = {
-          pieceId,
-          availableForms: getAvailablePromotionForms(this.currentStage),
-        }
-        this.stopCombatLoop()
-        return 0
-      }
-
-      if (pipeline.fanfareGold > 0) {
-        if (this.wavePhase === 'WAVE_ACTIVE') {
-          this.waveCombatStats = accumulateWaveCombatStats(this.waveCombatStats, {
-            goldFromPromotion: pipeline.fanfareGold,
-          })
-        }
-        this.addGold(pipeline.fanfareGold)
-        playGameSfx('promotion')
-      }
-      this.promotion.streak = pipeline.nextStreak
-      this.pendingPromotion = null
-      return pipeline.fanfareGold
+      return combat().processPromotionForPiece(pieceId, chosenForm)
     },
 
-    /** Player selects super-form from promotion modal (active mode). */
     choosePromotionForm(form: SuperPromotionForm, nowMs = Date.now()): void {
-      if (!this.pendingPromotion) return
-      this.processPromotionForPiece(this.pendingPromotion.pieceId, form)
-      playGameSfx('promotion')
-      this.startCombatLoop(nowMs)
+      combat().choosePromotionForm(form, nowMs)
     },
 
     dismissPendingPromotion(): void {
-      this.pendingPromotion = null
-      this.startCombatLoop()
+      combat().dismissPendingPromotion()
     },
 
-    /**
-     * Executes a player-chosen legal move in manual mode (GDD §1.4 hybrid loop).
-     */
     executePlayerManualMove(move: BoardMove, nowMs = Date.now()): number {
-      if (this.wavePhase !== 'WAVE_ACTIVE' || this.autoMode) return 0
-      if (this.manualPendingPieceId !== move.pieceId) return 0
-
-      const legal = this.manualLegalMoves
-      const isLegal = legal.some(
-        (m) => m.to.file === move.to.file && m.to.rank === move.to.rank && m.pieceId === move.pieceId,
-      )
-      if (!isLegal) return 0
-
-      const gold = this.resolvePlayerMove(move, nowMs)
-      const index = this.playerPieces.findIndex((p) => p.id === move.pieceId)
-      if (index !== -1) {
-        this.playerPieces[index] = scheduleNextAction(
-          this.playerPieces[index]!,
-          nowMs,
-          this.globalSpeedMult,
-        )
-      }
-      this.manualPendingPieceId = null
-      this.lastSimulatedMs = nowMs
-      this.playerPieces = syncInitiativeProgress(
-        this.playerPieces,
-        nowMs,
-        this.globalSpeedMult,
-      )
-      this.evaluateWaveOutcome()
-      return gold
+      return combat().executePlayerManualMove(move, nowMs)
     },
 
-    /**
-     * Shared combat resolution for auto and manual move execution.
-     */
-    resolvePlayerMove(move: BoardMove, nowMs = Date.now()): number {
-      const piece = this.playerPieces.find((p) => p.id === move.pieceId)
-      if (!piece) return 0
-
-      const enemiesBefore = [...this.enemyPieces]
-
-      const decreeMods = getRoyalDecreeModifiers(this.royalDecree)
-      const kingMult =
-        piece.kind === 'king' && this.royalDecree.isActive ? decreeMods.kingAttackMult : 1
-      const apMult = kingMult * getRevivalFlashApMult(piece)
-      const bossRuntime = this.bossCombat
-      const combat = resolveCombatMove(move, this.playerPieces, this.enemyPieces, {
-        stage: this.currentStage,
-        activeMult: calculateActiveMult(this.combo.count),
-        royalDecreeActive: this.royalDecree.isActive,
-        attackerApMult: apMult,
-        adjustDamage: bossRuntime
-          ? (raw, defender) =>
-              applyBossDamageReduction(
-                raw,
-                {
-                  identity: bossRuntime.identity,
-                  attackerKind: piece.kind,
-                  attackerSide: 'player',
-                  defender,
-                  moveFrom: move.from,
-                  moveTo: move.to,
-                },
-                bossRuntime,
-              )
-          : undefined,
-      })
-      this.playerPieces = combat.playerPieces
-      this.enemyPieces = combat.enemyPieces
-      this.pushCombatFeedback(feedbackFromCombatMove(move, combat, nowMs), nowMs)
-
-      if (combat.damageDealt > 0) {
-        this.waveCombatStats = accumulateWaveCombatStats(this.waveCombatStats, {
-          damageDealt: combat.damageDealt,
-        })
-      }
-      if (combat.captured) {
-        this.waveCombatStats = accumulateWaveCombatStats(this.waveCombatStats, {
-          captures: 1,
-        })
-      }
-
-      if (bossRuntime && combat.damageDealt > 0) {
-        const defender = this.enemyPieces.find(
-          (p) => p.id === move.capturedPieceId,
-        ) ?? this.enemyPieces.find(
-          (p) => coordKey(p.position) === coordKey(move.to),
-        )
-        if (defender) {
-          const reflect = calculateIronRookReflectDamage(
-            combat.damageDealt,
-            {
-              identity: bossRuntime.identity,
-              attackerKind: piece.kind,
-              attackerSide: 'player',
-              defender,
-              moveFrom: move.from,
-              moveTo: move.to,
-            },
-            bossRuntime,
-          )
-          if (reflect > 0) {
-            this.playerPieces = applyKingReflectDamage(this.playerPieces, reflect)
-            this.waveCombatStats = accumulateWaveCombatStats(this.waveCombatStats, {
-              damageTaken: reflect,
-            })
-          }
-        }
-      }
-
-      const actorIndex = this.playerPieces.findIndex((p) => p.id === move.pieceId)
-      if (actorIndex !== -1) {
-        this.playerPieces[actorIndex] = consumeRevivalFlashAction(this.playerPieces[actorIndex]!)
-      }
-
-      let captureGold = 0
-      if (combat.captureGold > 0) {
-        this.waveCombatStats = accumulateWaveCombatStats(this.waveCombatStats, {
-          goldFromCaptures: combat.captureGold,
-        })
-        this.addGold(combat.captureGold)
-        captureGold += combat.captureGold
-        this.incrementCombo(nowMs)
-      }
-
-      const actingPiece = this.playerPieces.find((p) => p.id === move.pieceId)
-      if (actingPiece) {
-        captureGold += this.processPromotionForPiece(move.pieceId)
-      }
-
-      if (this.pendingPromotion) {
-        this.syncCombatPacingAfterAction(enemiesBefore, nowMs)
-        if (this.wavePhase !== 'WAVE_ACTIVE') return captureGold
-        this.evaluateWaveOutcome()
-        return captureGold
-      }
-
-      const actionGold = this.awardActionGold({
-        applyActiveMult: !this.autoMode,
-        incrementCombo: !this.autoMode,
-        nowMs,
-      })
-      if (actionGold > 0) {
-        this.pushCombatFeedback(
-          [createCombatFeedback('gold', move.to, nowMs, Math.round(actionGold))],
-          nowMs,
-        )
-      }
-      captureGold += actionGold
-      this.syncCombatPacingAfterAction(enemiesBefore, nowMs)
-      if (this.wavePhase !== 'WAVE_ACTIVE') return captureGold
-      this.evaluateWaveOutcome()
-      return captureGold
+    resolvePlayerMove(
+      move: BoardMove,
+      nowMs = Date.now(),
+      options?: { trackCombat?: boolean },
+    ): number {
+      return combat().resolvePlayerMove(move, nowMs, options)
     },
 
-    /**
-     * Resolves an enemy move against the player roster (no gold awarded).
-     */
     resolveEnemyMove(move: BoardMove, nowMs = Date.now()): void {
-      const enemiesBefore = [...this.enemyPieces]
-      const playerBefore = this.playerPieces
-      const defender =
-        move.capturedPieceId && move.side === 'enemy'
-          ? playerBefore.find((p) => p.id === move.capturedPieceId)
-          : undefined
-      const combat = resolveCombatMove(move, this.playerPieces, this.enemyPieces, {
-        stage: this.currentStage,
-        activeMult: 1,
-        royalDecreeActive: false,
-        defenderInvulnerable: defender ? isPieceInvulnerable(defender, nowMs) : false,
-      })
-      this.enemyPieces = combat.enemyPieces
-      this.pushCombatFeedback(feedbackFromCombatMove(move, combat, nowMs), nowMs)
-
-      if (combat.damageDealt > 0 && defender?.side === 'player') {
-        this.waveCombatStats = accumulateWaveCombatStats(this.waveCombatStats, {
-          damageTaken: combat.damageDealt,
-        })
-      }
-
-      if (combat.captured && move.capturedPieceId && move.side === 'enemy') {
-        const meta = this.metaModifiers
-        const revived = tryImmortalRevive(
-          playerBefore,
-          combat.playerPieces,
-          move.capturedPieceId,
-          meta.hasImmortalGame,
-          this.immortalGameUsedThisStage,
-          nowMs,
-        )
-        this.playerPieces = revived.pieces
-        if (revived.used) {
-          this.immortalGameUsedThisStage = true
-        }
-      } else {
-        this.playerPieces = combat.playerPieces
-      }
-
-      const attacker = this.enemyPieces.find((p) => p.id === move.pieceId)
-      const kingBefore = playerBefore.find((p) => p.side === 'player' && p.kind === 'king')
-      const kingAfter = this.playerPieces.find((p) => p.side === 'player' && p.kind === 'king')
-      if (kingBefore) {
-        const capturedKing =
-          !kingAfter || move.capturedPieceId === kingBefore.id
-        const defeatedByDamage =
-          !!kingAfter && kingAfter.stats.hp <= 0 && move.capturedPieceId !== kingBefore.id
-        const attr = attributionFromEnemyMove(
-          move,
-          attacker,
-          capturedKing,
-          defeatedByDamage,
-        )
-        if (attr) this.recordKingFailAttribution(attr)
-      }
-
-      this.processEnemyPawnLeaks()
-      this.applyComboDecay(nowMs)
-      this.syncCombatPacingAfterAction(enemiesBefore, nowMs)
-      if (this.wavePhase !== 'WAVE_ACTIVE') return
-      this.evaluateWaveOutcome()
+      combat().resolveEnemyMove(move, nowMs)
     },
 
-    /** Enemy pawn leak — direct King damage when a pawn reaches rank 0 (GDD Phase 5). */
     processEnemyPawnLeaks(): void {
-      const leak = resolveEnemyPawnLeaks(
-        this.playerPieces,
-        this.enemyPieces,
-        this.currentStage,
-      )
-      if (leak.totalDamage <= 0) return
-      this.playerPieces = leak.playerPieces
-      this.enemyPieces = leak.enemyPieces
-      this.lastPawnLeakDamage = leak.totalDamage
-      this.waveCombatStats = accumulateWaveCombatStats(this.waveCombatStats, {
-        damageTaken: leak.totalDamage,
-      })
-      const king = this.playerPieces.find((p) => p.kind === 'king')
-      if (king) {
-        this.pushCombatFeedback(
-          [
-            createCombatFeedback(
-              'leak',
-              king.position,
-              Date.now(),
-              leak.totalDamage,
-            ),
-          ],
-        )
-        this.screenShakeUntilMs = Date.now() + SCREEN_SHAKE_MS
-      }
-      if (isWaveFailed(this.playerPieces)) {
-        this.recordKingFailAttribution({
-          source: 'leak',
-          leakDamage: leak.totalDamage,
-        })
-      }
-      this.evaluateWaveOutcome()
+      combat().processEnemyPawnLeaks()
     },
 
-    /** Runs signature boss scripts after an enemy action resolves. */
     tickBossAfterEnemyAction(actedEnemyId: string, nowMs = Date.now()): void {
-      if (!this.bossCombat) return
-      const result = tickBossMechanics(
-        this.bossCombat,
-        this.currentStage,
-        this.playerPieces,
-        this.enemyPieces,
-        actedEnemyId,
-        nowMs,
-        this.globalSpeedMult,
-      )
-      this.bossCombat = result.runtime
-      this.playerPieces = result.playerPieces
-      this.enemyPieces = result.enemyPieces
-      this.evaluateWaveOutcome()
+      combat().tickBossAfterEnemyAction(actedEnemyId, nowMs)
     },
 
-    /**
-     * Enemy initiative action — heuristic move + combat resolution.
-     */
     executeEnemyMove(pieceId: string, nowMs = Date.now()): boolean {
-      const piece = this.enemyPieces.find((p) => p.id === pieceId)
-      if (!piece) return false
-
-      const allPieces = getAllPieces(this.playerPieces, this.enemyPieces)
-      const move = getEnemyMoveHeuristic(piece, {
-        allPieces,
-        decreeStepEnabled: false,
-        movingPiece: piece,
-      })
-
-      if (move) {
-        this.resolveEnemyMove(move, nowMs)
-        if (this.wavePhase === 'WAVE_ACTIVE') {
-          this.tickBossAfterEnemyAction(pieceId, nowMs)
-        }
-      }
-      return move !== null
+      return combat().executeEnemyMove(pieceId, nowMs)
     },
 
-    /**
-     * Processes all ready enemies: sync timers, act, reschedule (GDD §1.5).
-     */
     tickEnemyInitiative(nowMs = Date.now()): string[] {
-      const result = processReadyInitiativeActions(
-        this.enemyPieces,
-        nowMs,
-        this.globalSpeedMult,
-      )
-      this.enemyPieces = result.pieces
-
-      const actedIds: string[] = []
-      for (const pieceId of result.actedPieceIds) {
-        if (this.executeEnemyMove(pieceId, nowMs)) {
-          actedIds.push(pieceId)
-        }
-        if (this.wavePhase !== 'WAVE_ACTIVE') break
-      }
-
-      this.enemyPieces = syncInitiativeProgress(
-        this.enemyPieces,
-        nowMs,
-        this.globalSpeedMult,
-      )
-      return actedIds
+      return combat().tickEnemyInitiative(nowMs)
     },
 
-    /**
-     * Runs AI move selection + combat resolution for one player piece (GDD §1.6).
-     */
     executePlayerAutoMove(pieceId: string, nowMs = Date.now()): number {
-      const piece = this.playerPieces.find((p) => p.id === pieceId)
-      if (!piece) return 0
-
-      const allPieces = getAllPieces(this.playerPieces, this.enemyPieces)
-      const decreeMods = getRoyalDecreeModifiers(this.royalDecree)
-      const meta = this.metaModifiers
-      const move = selectBestMove(piece, {
-        allPieces,
-        decreeStepEnabled: decreeMods.decreeStepEnabled,
-        royalDecreeActive: this.royalDecree.isActive,
-        personality: this.autoAiPersonality,
-        movingPiece: piece,
-        aiScoreMult: meta.aiScoreMult,
-      })
-
-      let captureGold = 0
-
-      if (move) {
-        captureGold += this.resolvePlayerMove(move, nowMs)
-      }
-
-      if (this.pendingPromotion) {
-        return captureGold
-      }
-
-      return captureGold
-    },
-
-    tickCombat(nowMs = Date.now()): CombatTickResult {
-      const empty: CombatTickResult = {
-        actedCount: 0,
-        enemyActedCount: 0,
-        goldEarned: 0,
-        actedPieceIds: [],
-        enemyActedPieceIds: [],
-      }
-
-      if (!this.combatLoopRunning || this.wavePhase !== 'WAVE_ACTIVE') {
-        return empty
-      }
-
-      if (this.pendingPromotion) {
-        return empty
-      }
-
-      this.checkBossWaveTimeout(nowMs)
-      if (this.wavePhase !== 'WAVE_ACTIVE') {
-        return empty
-      }
-
-      if (
-        shouldFailWaveForCombatStall({
-          livingEnemies: countLivingEnemies(this.enemyPieces),
-          combatActionsSinceEnemyKill: this.combatActionsSinceEnemyKill,
-          stageStartedAtMs: this.stageStartedAtMs,
-          nowMs,
-          isBossStage: isBossStage(this.currentStage),
-          hasBossDeadline: this.bossWaveDeadlineMs !== null,
-        })
-      ) {
-        if (!this.lastKingFailAttribution) {
-          this.recordKingFailAttribution({ source: 'stall' })
-        }
-        this.failWave(nowMs)
-        return empty
-      }
-
-      const playerSpeed = this.effectivePlayerSpeedMult
-
-      const combatTimePaused =
-        !this.autoMode && this.manualPendingPieceId !== null
-
-      if (!combatTimePaused) {
-        const deltaSec = Math.max(0, (nowMs - this.lastSimulatedMs) / 1000)
-        if (deltaSec > 0) {
-          this.regenStamina(deltaSec)
-        }
-        this.lastSimulatedMs = nowMs
-      }
-
-      this.applyComboDecay(nowMs)
-      this.pruneCombatFeedback(nowMs)
-
-      let actedPieceIds: string[] = []
-      let goldEarned = 0
-
-      if (this.autoMode) {
-        this.touchSessionActivity(nowMs)
-        this.playerPieces = syncInitiativeProgress(
-          this.playerPieces,
-          nowMs,
-          playerSpeed,
-        )
-        this.enemyPieces = syncInitiativeProgress(
-          this.enemyPieces,
-          nowMs,
-          this.globalSpeedMult,
-        )
-
-        const actor = getNextReadyActor(this.playerPieces, this.enemyPieces, nowMs)
-        let enemyActedPieceIds: string[] = []
-
-        if (actor?.side === 'enemy') {
-          if (this.executeEnemyMove(actor.id, nowMs)) {
-            enemyActedPieceIds = [actor.id]
-          }
-          this.scheduleEnemyAfterAction(actor.id, nowMs)
-          this.enemyPieces = syncInitiativeProgress(
-            this.enemyPieces,
-            nowMs,
-            this.globalSpeedMult,
-          )
-        } else if (actor?.side === 'player') {
-          goldEarned += this.executePlayerAutoMove(actor.id, nowMs)
-          this.schedulePlayerAfterAction(actor.id, nowMs)
-          this.playerPieces = syncInitiativeProgress(
-            this.playerPieces,
-            nowMs,
-            playerSpeed,
-          )
-          actedPieceIds = [actor.id]
-        }
-
-        this.evaluateWaveOutcome()
-
-        return {
-          actedCount: actedPieceIds.length,
-          enemyActedCount: enemyActedPieceIds.length,
-          goldEarned,
-          actedPieceIds,
-          enemyActedPieceIds,
-        }
-      }
-
-      /** Manual = strict turn-based: one global actor per tick (GDD §1.4). */
-      const combatNow = getCombatTimeMs({
-        autoMode: this.autoMode,
-        manualPendingPieceId: this.manualPendingPieceId,
-        lastSimulatedMs: this.lastSimulatedMs,
-        nowMs,
-      })
-      this.playerPieces = syncInitiativeProgress(
-        this.playerPieces,
-        combatNow,
-        playerSpeed,
-      )
-      this.enemyPieces = syncInitiativeProgress(
-        this.enemyPieces,
-        combatNow,
-        this.globalSpeedMult,
-      )
-
-      if (this.manualPendingPieceId) {
-        return empty
-      }
-
-      const actor = getNextReadyActor(this.playerPieces, this.enemyPieces, nowMs)
-      let enemyActedPieceIds: string[] = []
-
-      if (actor?.side === 'enemy') {
-        if (this.executeEnemyMove(actor.id, nowMs)) {
-          enemyActedPieceIds = [actor.id]
-        }
-        this.scheduleEnemyAfterAction(actor.id, nowMs)
-        this.enemyPieces = syncInitiativeProgress(
-          this.enemyPieces,
-          nowMs,
-          this.globalSpeedMult,
-        )
-        this.evaluateWaveOutcome()
-        if (this.wavePhase !== 'WAVE_ACTIVE') {
-          return {
-            actedCount: 0,
-            enemyActedCount: enemyActedPieceIds.length,
-            goldEarned: 0,
-            actedPieceIds: [],
-            enemyActedPieceIds,
-          }
-        }
-      } else if (actor?.side === 'player') {
-        this.beginManualPlayerTurn(actor.id, nowMs)
-        if (!this.manualPendingPieceId) {
-          return {
-            actedCount: 0,
-            enemyActedCount: 0,
-            goldEarned: 0,
-            actedPieceIds: [],
-            enemyActedPieceIds: [],
-          }
-        }
-        return empty
-      }
-
-      this.evaluateWaveOutcome()
-
-      return {
-        actedCount: actedPieceIds.length,
-        enemyActedCount: enemyActedPieceIds.length,
-        goldEarned,
-        actedPieceIds,
-        enemyActedPieceIds,
-      }
+      return combat().executePlayerAutoMove(pieceId, nowMs)
     },
 
     regenStamina(deltaSec: number): void {
-      if (!Number.isFinite(deltaSec) || deltaSec <= 0) return
-      const decreeMult = getRoyalDecreeModifiers(this.royalDecree).staminaRegenMult
-      const rate = STAMINA_REGEN_PER_SEC * decreeMult
-      this.stamina.current = Math.min(this.stamina.max, this.stamina.current + rate * deltaSec)
+      combat().regenStamina(deltaSec)
     },
 
     spendStaminaForClick(): boolean {
-      if (this.stamina.current < STAMINA_CLICK_COST) return false
-      this.stamina.current -= STAMINA_CLICK_COST
-      return true
+      return combat().spendStaminaForClick()
     },
 
-    /**
-     * Direct click damage on an enemy (GDD §1.1) — works in auto and manual; costs stamina.
-     */
     clickEnemyPiece(enemyPieceId: string, nowMs = Date.now()): number {
-      if (this.wavePhase !== 'WAVE_ACTIVE') return 0
-      if (isWaveFailed(this.playerPieces)) return 0
-      if (this.combatFocus !== 'strike') return 0
-
-      const enemy = this.enemyPieces.find((piece) => piece.id === enemyPieceId)
-      if (!enemy || enemy.side !== 'enemy') return 0
-
-      const combatNow = getCombatTimeMs({
-        autoMode: this.autoMode,
-        manualPendingPieceId: this.manualPendingPieceId,
-        lastSimulatedMs: this.lastSimulatedMs,
-        nowMs,
-      })
-      if (!isClickCombatReady(this.clickCombatReadyAtMs, combatNow)) return 0
-      if (!this.spendStaminaForClick()) return 0
-
-      this.applyComboDecay(nowMs)
-      this.incrementCombo(nowMs)
-
-      const enemiesBefore = [...this.enemyPieces]
-      const gmMods = this.grandmasterCombatModifiers
-      const activeMult = calculateActiveMult(this.combo.count) * gmMods.clickDamageMult
-      const bossRuntime = this.bossCombat
-      const coord = enemy.position
-
-      const result = resolveClickDamage(
-        enemyPieceId,
-        this.playerPieces,
-        this.enemyPieces,
-        {
-          clickPowerLevel: this.clickPowerLevel,
-          activeMult,
-          stage: this.currentStage,
-          royalDecreeActive: this.royalDecree.isActive,
-          adjustDamage: bossRuntime
-            ? (raw, defender) =>
-                applyBossDamageReduction(
-                  raw,
-                  {
-                    identity: bossRuntime.identity,
-                    attackerKind: 'king',
-                    attackerSide: 'player',
-                    defender,
-                    moveFrom: coord,
-                    moveTo: coord,
-                  },
-                  bossRuntime,
-                )
-            : undefined,
-        },
-      )
-
-      this.playerPieces = result.playerPieces
-      this.enemyPieces = result.enemyPieces
-
-      if (result.damageDealt > 0) {
-        this.waveCombatStats = accumulateWaveCombatStats(this.waveCombatStats, {
-          damageDealt: result.damageDealt,
-        })
-      }
-      if (result.captured) {
-        this.waveCombatStats = accumulateWaveCombatStats(this.waveCombatStats, {
-          captures: 1,
-        })
-      }
-
-      if (result.captured) {
-        this.pushCombatFeedback(
-          [createCombatFeedback('capture', coord, nowMs)],
-          nowMs,
-        )
-        this.screenShakeUntilMs = nowMs + SCREEN_SHAKE_MS
-        playGameSfx('capture')
-      } else if (result.damageDealt > 0) {
-        this.pushCombatFeedback(
-          [
-            createCombatFeedback('chip', coord, nowMs, result.damageDealt),
-          ],
-          nowMs,
-        )
-        playGameSfx('chip')
-      }
-
-      let goldEarned = 0
-      if (result.captureGold > 0) {
-        this.waveCombatStats = accumulateWaveCombatStats(this.waveCombatStats, {
-          goldFromCaptures: result.captureGold,
-        })
-        this.addGold(result.captureGold)
-        goldEarned += result.captureGold
-      }
-
-      const actionGold = this.awardActionGold({
-        applyActiveMult: true,
-        incrementCombo: false,
-        nowMs,
-      })
-      if (actionGold > 0) {
-        this.pushCombatFeedback(
-          [createCombatFeedback('gold', coord, nowMs, Math.round(actionGold))],
-          nowMs,
-        )
-        goldEarned += actionGold
-      }
-
-      this.clickCombatReadyAtMs = combatNow + CLICK_COOLDOWN_MS
-      this.syncCombatPacingAfterAction(enemiesBefore, nowMs)
-      if (this.wavePhase !== 'WAVE_ACTIVE') return result.damageDealt
-      this.evaluateWaveOutcome()
-      return result.damageDealt
+      return combat().clickEnemyPiece(enemyPieceId, nowMs)
     },
 
-    /** Purchases a catalog offer by id; rebuilds piece stats on success. */
+    tickCombat(nowMs = Date.now()) {
+      return combat().tickCombat(nowMs)
+    },
+
     purchaseUpgradeOffer(offerId: string): boolean {
-      const offer = this.upgradeOffers.find((o) => o.id === offerId)
-      if (!offer?.affordable) return false
-      if (!this.spendGold(offer.cost)) return false
-
-      if (offer.track === 'clickPower') {
-        this.clickPowerLevel = offer.nextLevel
-        this.recordUpgradePurchase()
-        playGameSfx('upgrade')
-        return true
-      }
-
-      if (offer.track === 'promotionMastery') {
-        this.promotion.masteryLevel = offer.nextLevel
-        this.recordUpgradePurchase()
-        playGameSfx('upgrade')
-        return true
-      }
-
-      if (offer.track === 'autoAdvanceWaves') {
-        if (this.autoAdvanceWavesPurchased) return false
-        if (!this.spendGold(offer.cost)) return false
-        this.autoAdvanceWavesPurchased = true
-        this.autoAdvanceWavesEnabled = true
-        this.autoStartWavesEnabled = false
-        this.recordUpgradePurchase()
-        playGameSfx('upgrade')
-        return true
-      }
-
-      if (!offer.pieceId) return false
-      const index = this.playerPieces.findIndex((piece) => piece.id === offer.pieceId)
-      if (index === -1) return false
-
-      const piece = this.playerPieces[index]!
-      const levels = { ...piece.upgradeLevels }
-      if (offer.track === 'initiative') {
-        levels.initiative = offer.nextLevel
-      } else {
-        levels[offer.track] = offer.nextLevel
-      }
-
-      const meta = this.metaModifiers
-      const stats = buildPieceStats(piece.kind, levels)
-      const scaledAp = stats.ap * meta.apMult
-      const hpRatio = piece.stats.maxHp > 0 ? piece.stats.hp / piece.stats.maxHp : 1
-
-      this.playerPieces[index] = {
-        ...piece,
-        upgradeLevels: levels,
-        stats: {
-          ...stats,
-          ap: scaledAp,
-          hp: Math.min(stats.maxHp, stats.maxHp * hpRatio),
-        },
-        initiative: {
-          ...piece.initiative,
-          iniLevel: levels.initiative,
-        },
-      }
-      this.recordUpgradePurchase()
-      playGameSfx('upgrade')
-      return true
+      return economy().purchaseUpgradeOffer(offerId)
     },
 
     purchaseBestRoiUpgrade(): boolean {
-      const pick = pickBestAffordablePurchase(this.upgradeOffers, this.pieceShopOffers)
-      if (!pick) return false
-      if (pick.source === 'shop') {
-        return this.purchasePieceShopOffer(pick.id)
-      }
-      return this.purchaseUpgradeOffer(pick.id)
+      return economy().purchaseBestRoiUpgrade()
     },
 
     /**
@@ -2460,8 +1604,8 @@ export function runGameStoreSanityCheck(nowMs = 0): { passed: boolean; messages:
   const decreeBefore = store.isRoyalDecreeActive
   store.deployPawn(3, 1, 'test-pawn', nowMs)
   assert('decree was active before deploy', decreeBefore)
-  assert('deploy second piece kills decree instantly', !store.isRoyalDecreeActive)
-  assert('decree permanently expired', store.royalDecree.permanentlyExpired)
+  assert('deploy second piece ends full decree', !store.isRoyalDecreeActive)
+  assert('army built latched', store.royalDecree.armyBuilt)
 
   store.startWave(nowMs)
   const tick = store.tickCombat(nowMs + 3000)
@@ -2470,7 +1614,9 @@ export function runGameStoreSanityCheck(nowMs = 0): { passed: boolean; messages:
 
   store.enemyPieces = []
   store.evaluateWaveOutcome()
-  assert('wave clear advances to next prep', store.isWavePrep)
+  assert('wave clear opens victory modal', store.isWaveComplete)
+  store.dismissWaveOutcome(nowMs)
+  assert('continue to prep advances stage', store.isWavePrep)
   assert('stage increments after clear', store.currentStage === 2)
 
   const decreeSim = runRoyalDecreeStateMachineCheck(nowMs)

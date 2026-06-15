@@ -4,10 +4,14 @@ import {
   combatSnapshotsEqual,
   deserializeGameState,
   EPHEMERAL_STATE_KEYS,
+  listPersistedGameStateKeys,
   roundTripCombatSnapshot,
   serializeGameState,
   toCombatSnapshot,
 } from '@/engine/gameSerialization'
+import { buildPostPrestigeState } from '@/engine/prestige'
+import { createDefaultEquippedCosmetics } from '@/engine/cosmetics'
+import { createDefaultAestheticPreferences } from '@/types/game'
 import { bootstrapPieceInitiative } from '@/engine/initiative'
 import {
   createInitialGameState,
@@ -158,5 +162,34 @@ describe('gameSerialization', () => {
     expect(restored.pendingPromotion?.pieceId).toBe('ps')
     expect(restored.manualPendingPieceId).toBeNull()
     expect(restored.combatLoopRunning).toBe(false)
+  })
+
+  it('serializes every persisted GameState key', () => {
+    const state = buildComplexCombatState()
+    const parsed = JSON.parse(serializeGameState(state)) as Record<string, unknown>
+    for (const key of listPersistedGameStateKeys()) {
+      expect(parsed).toHaveProperty(key)
+    }
+  })
+
+  it('prestige rebuild includes all persisted keys and retains lifetime flags', () => {
+    const state = createInitialGameState(1000)
+    state.maxStageReached = 25
+    state.lifetime.onboardingTelegraphComplete = true
+    const next = buildPostPrestigeState(2000, {
+      eloShards: state.currencies.eloShards,
+      trophies: state.currencies.trophies,
+      metaUpgrades: { ...state.metaUpgrades },
+      achievements: { ...state.achievements },
+      hasPrestigedOnce: true,
+      lifetime: { ...state.lifetime },
+      equippedCosmetics: createDefaultEquippedCosmetics(),
+      aestheticPreferences: createDefaultAestheticPreferences(),
+    }, 3)
+    expect(next.lifetime.onboardingTelegraphComplete).toBe(true)
+    for (const key of listPersistedGameStateKeys()) {
+      expect(next).toHaveProperty(key)
+    }
+    expect(roundTripCombatSnapshot(next)).toBe(true)
   })
 })

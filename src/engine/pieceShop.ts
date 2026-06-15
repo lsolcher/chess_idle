@@ -3,6 +3,14 @@
  * Unlocks gate purchases; buying deploys onto player ranks 0–1 (chess ranks 1–2).
  */
 import { buildOccupancy, coordKey, getAllPieces, type BoardCoord } from './board'
+import {
+  DEPLOY_SLOT_MILESTONES,
+  ROSTER_BISHOP_SLOTS,
+  ROSTER_KNIGHT_SLOTS,
+  ROSTER_PAWN_SLOTS,
+  ROSTER_QUEEN_SLOT,
+  ROSTER_ROOK_SLOTS,
+} from '@/engine/balanceConstants'
 import { calculateRecruitRoi } from '@/engine/upgrades'
 import {
   calculateUpgradeCost,
@@ -35,26 +43,79 @@ export function calculatePieceRecruitCost(kind: PieceKind, pawnIndex = 0): numbe
 }
 
 /**
- * Milestone unlock table (GDD §3.1 / §4.2).
- * Pawn slot count rises at stage 6; piece types unlock at 10/15/30/45.
+ * Milestone unlock table (GDD §3.1 / §4.2) — chess-style roster caps.
+ * Pawns scale 1→2→3→4; minors unlock at boss stages; pairs arrive in endgame bands.
  */
 export function resolveUnlockedSlotsFromMilestones(maxStageReached: number): UnlockedSlotsState {
-  return {
-    pawn: maxStageReached >= 6 ? 2 : 1,
-    knight: maxStageReached >= 10,
-    bishop: maxStageReached >= 15,
-    rook: maxStageReached >= 30,
-    queen: maxStageReached >= 45,
-  }
+  const stage = Math.max(0, maxStageReached)
+  let pawn = 1
+  if (stage >= ROSTER_PAWN_SLOTS.fourth) pawn = 4
+  else if (stage >= ROSTER_PAWN_SLOTS.third) pawn = 3
+  else if (stage >= ROSTER_PAWN_SLOTS.second) pawn = 2
+
+  let knight = 0
+  if (stage >= ROSTER_KNIGHT_SLOTS.second) knight = 2
+  else if (stage >= ROSTER_KNIGHT_SLOTS.first) knight = 1
+
+  let bishop = 0
+  if (stage >= ROSTER_BISHOP_SLOTS.second) bishop = 2
+  else if (stage >= ROSTER_BISHOP_SLOTS.first) bishop = 1
+
+  let rook = 0
+  if (stage >= ROSTER_ROOK_SLOTS.second) rook = 2
+  else if (stage >= ROSTER_ROOK_SLOTS.first) rook = 1
+
+  const queen = stage >= ROSTER_QUEEN_SLOT ? 1 : 0
+
+  return { pawn, knight, bishop, rook, queen }
 }
 
-/** Stage 40 milestone grants at least 6 deploy slots (GDD §4.2). */
-export function applyDeploySlotMilestones(maxStageReached: number, deploySlots: number): number {
+/** King + sum of milestone roster caps, capped at global deploy maximum. */
+export function computeMaxDeploySlotsFromRoster(unlockedSlots: UnlockedSlotsState): number {
+  const rosterPieces =
+    unlockedSlots.pawn +
+    unlockedSlots.knight +
+    unlockedSlots.bishop +
+    unlockedSlots.rook +
+    unlockedSlots.queen
+  return Math.min(MAX_DEPLOY_SLOTS, 1 + rosterPieces)
+}
+
+export function getRosterCapForKind(
+  kind: PieceKind,
+  unlockedSlots: UnlockedSlotsState,
+): number {
+  if (kind === 'king') return 1
+  if (kind === 'pawn') return unlockedSlots.pawn
+  if (kind === 'knight') return unlockedSlots.knight
+  if (kind === 'bishop') return unlockedSlots.bishop
+  if (kind === 'rook') return unlockedSlots.rook
+  if (kind === 'queen') return unlockedSlots.queen
+  return 0
+}
+
+/** Wave milestones raise free deploy slots (within roster cap). */
+export function applyDeploySlotMilestones(
+  maxStageReached: number,
+  deploySlots: number,
+  unlockedSlots?: UnlockedSlotsState,
+): number {
+  const unlocked = unlockedSlots ?? resolveUnlockedSlotsFromMilestones(maxStageReached)
+  const rosterCap = computeMaxDeploySlotsFromRoster(unlocked)
   let slots = deploySlots
-  if (maxStageReached >= 40) {
-    slots = Math.max(slots, 6)
+  for (const milestone of DEPLOY_SLOT_MILESTONES) {
+    if (maxStageReached >= milestone.stage) {
+      slots = Math.max(slots, Math.min(milestone.slots, rosterCap))
+    }
   }
-  return Math.min(slots, MAX_DEPLOY_SLOTS)
+  return Math.min(slots, rosterCap, MAX_DEPLOY_SLOTS)
+}
+
+export function clampDeploySlotsToRoster(
+  deploySlots: number,
+  unlockedSlots: UnlockedSlotsState,
+): number {
+  return Math.min(Math.max(1, deploySlots), computeMaxDeploySlotsFromRoster(unlockedSlots))
 }
 
 export function countPiecesOfKind(pieces: ChessPiece[], kind: PieceKind): number {
@@ -79,12 +140,7 @@ export function isPieceTypeUnlocked(
   const def = PIECE_DEFINITIONS[kind]
   if (maxStageReached < def.unlockStage) return false
 
-  if (kind === 'pawn') return unlockedSlots.pawn > 0
-  if (kind === 'knight') return unlockedSlots.knight
-  if (kind === 'bishop') return unlockedSlots.bishop
-  if (kind === 'rook') return unlockedSlots.rook
-  if (kind === 'queen') return unlockedSlots.queen
-  return false
+  return getRosterCapForKind(kind, unlockedSlots) > 0
 }
 
 /** True when roster cap for this piece type is not yet filled. */
@@ -93,10 +149,18 @@ export function hasRosterSlotForKind(
   playerPieces: ChessPiece[],
   unlockedSlots: UnlockedSlotsState,
 ): boolean {
-  if (kind === 'pawn') {
-    return countPiecesOfKind(playerPieces, 'pawn') < unlockedSlots.pawn
-  }
-  return countPiecesOfKind(playerPieces, kind) < 1
+  const cap = getRosterCapForKind(kind, unlockedSlots)
+  return cap > 0 && countPiecesOfKind(playerPieces, kind) < cap
+}
+
+/** True when the army has empty deploy capacity but can still recruit a pawn. */
+export function shouldPrioritizePawnRecruit(
+  playerPieces: ChessPiece[],
+  unlockedSlots: UnlockedSlotsState,
+  deploySlots: number,
+): boolean {
+  if (!hasBoardSlotAvailable(playerPieces, deploySlots)) return false
+  return hasRosterSlotForKind('pawn', playerPieces, unlockedSlots)
 }
 
 /**
@@ -170,7 +234,12 @@ function buildPieceOffer(
   if (!unlocked) {
     lockedReason = `Unlocks at Stage ${def.unlockStage}`
   } else if (!rosterRoom) {
-    lockedReason = kind === 'pawn' ? 'Pawn slots full' : `${kind} already deployed`
+    const cap = getRosterCapForKind(kind, input.unlockedSlots)
+    const owned = countPiecesOfKind(input.playerPieces, kind)
+    lockedReason =
+      kind === 'pawn'
+        ? `Pawn roster full (${owned}/${cap})`
+        : `${kind} roster full (${owned}/${cap})`
   } else if (!boardRoom) {
     lockedReason = 'Board full — buy a slot'
   } else if (!inPrep) {
@@ -180,6 +249,12 @@ function buildPieceOffer(
   }
 
   const purchasable = unlocked && rosterRoom && boardRoom && inPrep && deploySquare !== null
+  const pawnOwned = kind === 'pawn' ? countPiecesOfKind(input.playerPieces, 'pawn') : 0
+  const pawnCap = kind === 'pawn' ? getRosterCapForKind('pawn', input.unlockedSlots) : 0
+  const pawnHint =
+    kind === 'pawn' && pawnCap > 0
+      ? ` · pawns ${pawnOwned}/${pawnCap} (chess-style)`
+      : ''
 
   return {
     id: `shop:piece:${kind}`,
@@ -190,7 +265,7 @@ function buildPieceOffer(
     purchasable: purchasable && affordable,
     roiScore: calculateRecruitRoi(kind, cost, input.globalSpeedMult ?? 1),
     lockedReason,
-    preview: `Tier ${def.tier} · ${def.baseAp} AP · deploys rank ${kind === 'pawn' ? 2 : '1–2'}`,
+    preview: `Tier ${def.tier} · ${def.baseAp} AP · deploys rank ${kind === 'pawn' ? 2 : '1–2'}${pawnHint}`,
   }
 }
 
@@ -198,7 +273,8 @@ function buildBoardSlotOffer(
   input: PieceShopCatalogInput,
   pieceOffers: PieceShopOffer[],
 ): PieceShopOffer | null {
-  if (input.deploySlots >= MAX_DEPLOY_SLOTS) return null
+  const rosterCap = computeMaxDeploySlotsFromRoster(input.unlockedSlots)
+  if (input.deploySlots >= rosterCap || input.deploySlots >= MAX_DEPLOY_SLOTS) return null
 
   const nextSlot = input.deploySlots + 1
   const purchaseIndex = nextSlot - BASE_DEPLOY_SLOTS
@@ -209,6 +285,12 @@ function buildBoardSlotOffer(
   )
   const affordable = input.gold >= cost
   const speed = input.globalSpeedMult ?? 1
+  const inPrep = input.wavePhase === 'WAVE_PREP'
+  const prioritizePawns = shouldPrioritizePawnRecruit(
+    input.playerPieces,
+    input.unlockedSlots,
+    input.deploySlots,
+  )
 
   const blockedRecruit = pieceOffers
     .filter(
@@ -224,16 +306,27 @@ function buildBoardSlotOffer(
     ? blockedRecruit.roiScore * 0.95
     : calculateRecruitRoi('pawn', cost, speed) * 0.5
 
+  let lockedReason: string | undefined
+  if (!inPrep) {
+    lockedReason = 'Prep phase only'
+  } else if (prioritizePawns) {
+    const pawnOwned = countPiecesOfKind(input.playerPieces, 'pawn')
+    const pawnCap = input.unlockedSlots.pawn
+    lockedReason = `Recruit pawns first (${pawnOwned}/${pawnCap})`
+  }
+
+  const purchasable = affordable && inPrep && !prioritizePawns
+
   return {
     id: 'shop:boardSlot',
     kind: 'boardSlot',
     label: 'Board Slot',
     cost,
     affordable,
-    purchasable: affordable && input.wavePhase === 'WAVE_PREP',
+    purchasable,
     roiScore,
-    lockedReason: input.wavePhase !== 'WAVE_PREP' ? 'Prep phase only' : undefined,
-    preview: `Army size ${input.deploySlots} → ${nextSlot} (max ${MAX_DEPLOY_SLOTS})`,
+    lockedReason,
+    preview: `Army size ${input.deploySlots} → ${nextSlot} (roster cap ${rosterCap})`,
   }
 }
 
@@ -249,7 +342,13 @@ export function buildPieceShopCatalog(input: PieceShopCatalogInput): PieceShopOf
   const slotOffer = buildBoardSlotOffer(input, offers)
   if (slotOffer) offers.push(slotOffer)
 
-  return offers
+  return offers.sort((a, b) => {
+    if (a.kind === 'pawn' && b.kind !== 'pawn') return -1
+    if (b.kind === 'pawn' && a.kind !== 'pawn') return 1
+    if (a.kind === 'boardSlot' && b.kind !== 'boardSlot') return 1
+    if (b.kind === 'boardSlot' && a.kind !== 'boardSlot') return -1
+    return 0
+  })
 }
 
 export function createShopPieceId(kind: PieceKind, playerPieces: ChessPiece[]): string {
@@ -268,8 +367,17 @@ export function runPieceShopSanityCheck(): { passed: boolean; messages: string[]
 
   assert('pawn cost tier 1', calculatePieceRecruitCost('pawn') === 100)
   assert('knight cost tier 2', calculatePieceRecruitCost('knight') === 400)
-  assert('stage 6 grants 2 pawn slots', resolveUnlockedSlotsFromMilestones(6).pawn === 2)
-  assert('stage 10 unlocks knight', resolveUnlockedSlotsFromMilestones(10).knight === true)
+  assert('stage 4 grants 2 pawn slots', resolveUnlockedSlotsFromMilestones(4).pawn === 2)
+  assert('stage 17 grants 3 pawn slots', resolveUnlockedSlotsFromMilestones(17).pawn === 3)
+  assert('stage 8 unlocks knight', resolveUnlockedSlotsFromMilestones(8).knight === 1)
+  assert(
+    'roster cap clamps deploy at stage 3',
+    computeMaxDeploySlotsFromRoster(resolveUnlockedSlotsFromMilestones(3)) === 2,
+  )
+  assert(
+    'stage 4 milestone grants 3 deploy slots',
+    applyDeploySlotMilestones(4, 2, resolveUnlockedSlotsFromMilestones(4)) === 3,
+  )
 
   const king = createPiece('k', 'king', 'player', { file: 4, rank: 0 })
   const square = findDeploySquare([king], [], 'pawn')

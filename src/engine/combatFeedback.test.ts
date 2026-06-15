@@ -48,7 +48,32 @@ describe('combatFeedback', () => {
       },
       0,
     )
-    expect(chip[0]?.kind).toBe('chip')
+    expect(chip[0]?.kind).toBe('clash')
     expect(chip[0]?.amount).toBe(3)
+  })
+
+  it('flags boss capture as heavy impact', () => {
+    const move: BoardMove = {
+      pieceId: 'p',
+      side: 'player',
+      kind: 'queen',
+      from: { file: 1, rank: 1 },
+      to: { file: 1, rank: 2 },
+      isCapture: true,
+      isExtendedStep: false,
+    }
+    const events = feedbackFromCombatMove(
+      move,
+      {
+        playerPieces: [],
+        enemyPieces: [],
+        damageDealt: 99,
+        captured: true,
+        captureGold: 0,
+      },
+      0,
+      { targetIsBoss: true },
+    )
+    expect(events[0]?.heavy).toBe(true)
   })
 })

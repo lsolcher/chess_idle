@@ -11,7 +11,11 @@ import { resolvePersistStorage } from '@/store/persistStorage'
 
 export { resolvePersistStorage } from '@/store/persistStorage'
 import { normalizePersistedLifetime } from '@/engine/saveMigration'
+import { calculateMetaModifiers } from '@/engine/metaUpgrades'
+import { refreshPlayerArmyCombatStats } from '@/engine/playerStageScaling'
 import { healPlayerPiecesForPrep } from '@/engine/waveState'
+import { calculateMetaModifiers } from '@/engine/metaUpgrades'
+import { mergeTownBonuses, NEUTRAL_TOWN_BONUSES } from '@/engine/townBuildings'
 import type { PiniaPluginContext } from 'pinia'
 import type { PersistenceOptions } from 'pinia-plugin-persistedstate'
 import type { GameState, WavePhase } from '@/types/game'
@@ -20,6 +24,11 @@ import {
   normalizeAutoAiPersonality,
   normalizeCombatFocus,
 } from '@/types/game'
+import {
+  isOnboardingTelegraphWave,
+  ONBOARDING_PAWN_ID,
+} from '@/engine/onboardingTelegraph'
+import { normalizeRoyalDecreeState } from '@/engine/royalDecree'
 import { evaluateRoyalDecree, GAME_SCHEMA_VERSION } from '@/types/game'
 import { GAME_SAVE_STORAGE_KEY } from '@/version'
 
@@ -36,6 +45,9 @@ export const PERSIST_OMIT_PATHS: (keyof GameState)[] = [
   'lastSimulatedMs',
   'combatFeedbackEvents',
   'screenShakeUntilMs',
+  'impactFreezeUntilMs',
+  'boardZoomUntilMs',
+  'pieceJuicePulseUntilMs',
   'lastOfflineGoldGranted',
   'waveCombatStats',
   'waveOutcomeReport',
@@ -60,6 +72,9 @@ export function restorePersistedSession(
     clickCombatReadyAtMs: Math.min(state.clickCombatReadyAtMs ?? nowMs, nowMs),
     combatFeedbackEvents: [],
     screenShakeUntilMs: 0,
+    impactFreezeUntilMs: 0,
+    boardZoomUntilMs: 0,
+    pieceJuicePulseUntilMs: {},
     exhibitionLastTickMs: state.exhibitionLastTickMs ?? nowMs,
     exhibitionGoldEarned: state.exhibitionGoldEarned ?? 0,
     hasPrestigedOnce: state.hasPrestigedOnce ?? false,
@@ -67,6 +82,8 @@ export function restorePersistedSession(
     autoAdvanceWavesEnabled: state.autoAdvanceWavesEnabled ?? false,
     autoStartWavesEnabled: state.autoStartWavesEnabled ?? false,
     autoAiPersonality: normalizeAutoAiPersonality(state.autoAiPersonality),
+    telegraphedEnemyIds: state.telegraphedEnemyIds ?? [],
+    playerTempoHasteMult: state.playerTempoHasteMult ?? 1,
     combatFocus: normalizeCombatFocus(state.combatFocus, state.autoMode ?? true),
     enPassantCarryByPieceId: state.enPassantCarryByPieceId ?? {},
     bossTrophiesClaimed: state.bossTrophiesClaimed ?? [],
@@ -138,7 +155,10 @@ export function bootstrapPersistedRosters(
   const speed = state.globalSpeedMult
 
   if (state.wavePhase === 'WAVE_PREP') {
-    const healed = healPlayerPiecesForPrep(state.playerPieces)
+    const healed = healPlayerPiecesForPrep(state.playerPieces, {
+      missingHpRecoveryFraction: calculateMetaModifiers(state.metaUpgrades)
+        .prepMissingHpRecoveryFraction,
+    })
     return {
       playerPieces: bootstrapPiecesForCombat(healed, nowMs, speed),
       enemyPieces: [],
@@ -172,11 +192,25 @@ export const gameStorePersistConfig: PersistenceOptions<GameState> = {
       supporterOfflineGoldMultiplier: readPersistedSupporterOfflineMultiplier(),
     })
     const rosters = bootstrapPersistedRosters(state, nowMs)
-    const royalDecree = evaluateRoyalDecree(rosters.playerPieces, state.royalDecree)
+    const metaApMult = mergeTownBonuses(
+      calculateMetaModifiers(state.metaUpgrades),
+      NEUTRAL_TOWN_BONUSES,
+    ).apMult
+    const playerPieces = refreshPlayerArmyCombatStats(
+      rosters.playerPieces,
+      state.currentStage,
+      state.promotion.masteryLevel,
+      metaApMult,
+      { preserveHpRatio: state.wavePhase === 'WAVE_ACTIVE' },
+    )
+    const royalDecree = normalizeRoyalDecreeState(
+      evaluateRoyalDecree(playerPieces, state.royalDecree),
+    )
 
     ;(ctx.store.$patch as (patch: Partial<GameState>) => void)({
       ...restorePersistedSession(state, nowMs),
       ...rosters,
+      playerPieces,
       royalDecree,
       lastActiveAtMs: nowMs,
       ...(offline.gold > 0
@@ -192,8 +226,21 @@ export const gameStorePersistConfig: PersistenceOptions<GameState> = {
     })
 
     if ((ctx.store.$state as GameState).wavePhase === 'WAVE_ACTIVE') {
-      const store = ctx.store as unknown as { startCombatLoop: (ms?: number) => void }
+      const store = ctx.store as unknown as {
+        startCombatLoop: (ms?: number) => void
+        beginManualPlayerTurn: (pieceId: string, ms?: number) => void
+      }
       store.startCombatLoop(nowMs)
+      const hydrated = ctx.store.$state as GameState
+      if (
+        isOnboardingTelegraphWave(
+          hydrated.currentStage,
+          hydrated.lifetime.onboardingTelegraphComplete ?? false,
+        ) &&
+        !hydrated.autoMode
+      ) {
+        store.beginManualPlayerTurn(ONBOARDING_PAWN_ID, nowMs)
+      }
     }
   },
 }

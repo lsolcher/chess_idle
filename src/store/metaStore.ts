@@ -13,7 +13,15 @@ import type { PersistenceOptions } from 'pinia-plugin-persistedstate'
 import { META_STORE_PERSIST_KEY } from '@/version'
 import { resolvePersistStorage } from '@/store/persistStorage'
 
+import { DOJO_SKILL_REWARD } from '@/engine/balanceConstants'
+import {
+  createDefaultDojoModules,
+  type DojoModuleCompletion,
+  type DojoModuleId,
+} from '@/engine/wavePatterns'
 import { getAiMove, HARD_LOOKAHEAD_PLIES, type Board, type DojoDifficulty } from '@/engine/chessDojo'
+
+export { DOJO_SKILL_REWARD } from '@/engine/balanceConstants'
 
 import type { SupporterConvenienceFlags } from '@/engine/supporterQoL'
 
@@ -145,15 +153,6 @@ export const CONVENIENCE_UPGRADE_DEFINITIONS: ConvenienceUpgradeDefinition[] = [
 
 
 
-export const DOJO_SKILL_REWARD: Record<DojoDifficulty, number> = {
-
-  easy: 1,
-
-  medium: 2,
-
-  hard: 3,
-
-}
 
 
 
@@ -162,6 +161,8 @@ export interface MetaStoreState {
   skillPoints: number
 
   dojoUpgrades: Record<DojoUpgradeId, number>
+
+  dojoModules: DojoModuleCompletion
 
   dojoVictories: Record<DojoDifficulty, number>
 
@@ -214,6 +215,8 @@ export function createInitialMetaStoreState(): MetaStoreState {
     skillPoints: 0,
 
     dojoUpgrades: createDefaultDojoUpgrades(),
+
+    dojoModules: createDefaultDojoModules(),
 
     dojoVictories: { easy: 0, medium: 0, hard: 0 },
 
@@ -346,6 +349,24 @@ export const useMetaStore = defineStore('meta', {
   actions: {
 
     /** Awards skill points after a Dojo win; returns points granted. */
+
+    completeDojoModule(id: DojoModuleId): void {
+
+      this.dojoModules = { ...createDefaultDojoModules(), ...this.dojoModules, [id]: true }
+
+    },
+
+
+
+    hasDojoModule(id: DojoModuleId): boolean {
+
+      const modules = { ...createDefaultDojoModules(), ...this.dojoModules }
+
+      return Boolean(modules[id])
+
+    },
+
+
 
     dojoVictory(difficulty: DojoDifficulty): number {
 

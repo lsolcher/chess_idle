@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import AudioSettingsPanel from '@/components/AudioSettingsPanel.vue'
-import CosmeticsPanel from '@/components/CosmeticsPanel.vue'
 import ArenaLoadout from '@/components/ArenaLoadout.vue'
 import SupporterStore from '@/components/SupporterStore.vue'
 import ChessDojo from '@/components/ChessDojo.vue'
@@ -21,7 +20,6 @@ type UpgradeTab =
   | 'town'
   | 'arena'
   | 'supporter'
-  | 'wardrobe'
   | 'audio'
 
 const store = useGameStore()
@@ -37,7 +35,6 @@ const tabs: { id: UpgradeTab; label: string; disabled?: boolean }[] = [
   { id: 'town', label: 'Town' },
   { id: 'arena', label: 'Arena' },
   { id: 'supporter', label: 'Club' },
-  { id: 'wardrobe', label: 'Themes' },
   { id: 'audio', label: 'Audio' },
 ]
 
@@ -75,12 +72,12 @@ function onTabSelect(tabId: UpgradeTab): void {
 </script>
 
 <template>
-  <section class="rounded-xl border border-slate-800 bg-slate-900/60">
-    <div class="flex items-center justify-between border-b border-slate-800 px-4 py-3">
-      <h2 class="text-sm font-semibold uppercase tracking-wide text-slate-400">Upgrades</h2>
+  <section class="stone-panel overflow-hidden">
+    <div class="stone-panel__header flex items-center justify-between px-4 py-3">
+      <h2 class="fantasy-heading text-sm font-semibold uppercase tracking-wide">Upgrades</h2>
       <button
         type="button"
-        class="rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-500 disabled:opacity-40"
+        class="btn-juice rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-500 disabled:opacity-40"
         :disabled="!store.bestRoiUpgradeId"
         @click="onBuyBest"
       >
@@ -88,13 +85,13 @@ function onTabSelect(tabId: UpgradeTab): void {
       </button>
     </div>
 
-    <div class="flex border-b border-slate-800 px-2" role="tablist">
+    <div class="flex border-b border-[var(--color-iron)] px-2" role="tablist">
       <button
         v-for="tab in tabs"
         :key="tab.id"
         type="button"
         role="tab"
-        class="px-4 py-2 text-xs font-medium uppercase tracking-wide transition"
+        class="btn-juice px-4 py-2 text-xs font-medium uppercase tracking-wide transition"
         :class="
           activeTab === tab.id
             ? 'border-b-2 border-emerald-400 text-emerald-300'
@@ -118,8 +115,6 @@ function onTabSelect(tabId: UpgradeTab): void {
     <ArenaLoadout v-else-if="activeTab === 'arena'" class="border-0 bg-transparent" />
 
     <SupporterStore v-else-if="activeTab === 'supporter'" class="border-0 bg-transparent" />
-
-    <CosmeticsPanel v-else-if="activeTab === 'wardrobe'" />
 
     <AudioSettingsPanel v-else-if="activeTab === 'audio'" />
 
@@ -153,7 +148,7 @@ function onTabSelect(tabId: UpgradeTab): void {
         </div>
         <button
           type="button"
-          class="shrink-0 rounded-lg px-4 py-2 text-sm font-semibold transition active:scale-[0.98]"
+          class="btn-juice shrink-0 rounded-lg px-4 py-2 text-sm font-semibold"
           :class="
             offer.affordable
               ? offer.isBestRoi

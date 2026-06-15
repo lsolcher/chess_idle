@@ -60,9 +60,9 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <section class="flex flex-col gap-4 px-4 py-4">
+  <section class="stone-panel flex flex-col gap-4 p-4">
     <header class="flex flex-col gap-1">
-      <h3 class="text-sm font-semibold uppercase tracking-wide text-emerald-300">
+      <h3 class="fantasy-heading text-sm font-semibold uppercase tracking-wide">
         {{ t('chessTown.title') }}
       </h3>
       <p class="text-xs text-slate-400">{{ t('chessTown.subtitle') }}</p>
@@ -70,7 +70,7 @@ onUnmounted(() => {
     </header>
 
     <dl
-      class="grid grid-cols-3 gap-2 rounded-lg border border-slate-800 bg-slate-950/60 px-3 py-2 text-[10px]"
+      class="grid grid-cols-3 gap-2 rounded-lg border-2 border-[var(--color-iron)] bg-[rgba(15,23,42,0.5)] px-3 py-2 text-[10px]"
     >
       <div>
         <dt class="text-slate-500">{{ t('chessTown.bonusAp') }}</dt>

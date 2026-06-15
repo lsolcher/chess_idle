@@ -1,17 +1,11 @@
 /**
  * Arena point-cost (PC) engine — deterministic loadout valuation (GDD §9.1).
  */
+import { ARENA_BASE_PC } from '@/engine/balanceConstants'
 import type { ChessPiece, PieceKind, SuperPromotionForm } from '@/types/game'
 
-/** Draft BasePC table (GDD §9.1). */
-export const BASE_PC: Record<PieceKind, number> = {
-  pawn: 40,
-  knight: 120,
-  bishop: 120,
-  rook: 200,
-  queen: 320,
-  king: 150,
-}
+/** Draft BasePC table (GDD §9.1) — see `balanceConstants.ts` for tuning. */
+export const BASE_PC: Record<PieceKind, number> = { ...ARENA_BASE_PC }
 
 /**
  * Super-form premium on point cost (GDD: 1.4–2.2); separate from combat apMult.

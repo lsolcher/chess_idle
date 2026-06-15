@@ -10,6 +10,7 @@ describe('royal decree state machine', () => {
   it('starts active on solo king run', () => {
     const state = createInitialGameState(0)
     expect(state.royalDecree.isActive).toBe(true)
+    expect(state.royalDecree.mode).toBe('full')
     expect(getRoyalDecreeModifiers(state.royalDecree).kingAttackMult).toBe(2)
   })
 
@@ -24,10 +25,10 @@ describe('royal decree state machine', () => {
     })
 
     expect(next.isActive).toBe(false)
-    expect(next.permanentlyExpired).toBe(true)
+    expect(next.armyBuilt).toBe(true)
   })
 
-  it('never reactivates after permanent expiry even if solo again', () => {
+  it('reactivates last stand when solo again after army built', () => {
     const state = createInitialGameState(0)
     let decree = state.royalDecree
     const pawn = createPiece('p1', 'pawn', 'player', { file: 3, rank: 1 })
@@ -43,9 +44,10 @@ describe('royal decree state machine', () => {
       playerPieces: soloAgain,
     })
 
-    expect(decree.isActive).toBe(false)
-    expect(decree.permanentlyExpired).toBe(true)
-    expect(getRoyalDecreeModifiers(decree).staminaRegenMult).toBe(1)
+    expect(decree.isActive).toBe(true)
+    expect(decree.mode).toBe('lastStand')
+    expect(getRoyalDecreeModifiers(decree).staminaRegenMult).toBe(2)
+    expect(getRoyalDecreeModifiers(decree).kingAttackMult).toBe(1.3)
   })
 
   it('passes headless state machine check', () => {

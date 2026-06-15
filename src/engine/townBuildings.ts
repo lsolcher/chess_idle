@@ -75,9 +75,15 @@ export const NEUTRAL_TOWN_BONUSES: TownBonuses = {
   goldMult: 1,
 }
 
-const BARRACKS_AP_PER_LEVEL = 0.02
-const ACADEMY_SPEED_PER_LEVEL = 0.03
-const TREASURY_GOLD_PER_LEVEL = 0.03
+import {
+  TOWN_ACADEMY_SPEED_PER_LEVEL,
+  TOWN_BARRACKS_AP_PER_LEVEL,
+  TOWN_TREASURY_GOLD_PER_LEVEL,
+} from '@/engine/balanceConstants'
+
+const BARRACKS_AP_PER_LEVEL = TOWN_BARRACKS_AP_PER_LEVEL
+const ACADEMY_SPEED_PER_LEVEL = TOWN_ACADEMY_SPEED_PER_LEVEL
+const TREASURY_GOLD_PER_LEVEL = TOWN_TREASURY_GOLD_PER_LEVEL
 
 export function createDefaultTownBuildings(): TownBuildingLevels {
   return {

@@ -18,5 +18,7 @@ export function normalizePersistedLifetime(state: GameState): GameState['lifetim
     ),
     totalUpgradesBought: base.totalUpgradesBought ?? 0,
     totalPrestiges: base.totalPrestiges ?? 0,
+    lifetimeWavesCleared: base.lifetimeWavesCleared ?? 0,
+    onboardingTelegraphComplete: base.onboardingTelegraphComplete ?? false,
   }
 }
